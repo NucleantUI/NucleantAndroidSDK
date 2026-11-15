@@ -1,6 +1,6 @@
 // swift-tools-version: 6.2
 //
-// NucleantAndroid — Swift APIs over the Android SDK, through swift-java.
+// NucleantAndroidSDK — Swift APIs over the Android SDK, through swift-java.
 //
 // One target per capability — AndroidFlashlight, AndroidCamera, AndroidPhotos —
 // each the Android side of a capability, calling the framework's Java classes
@@ -49,7 +49,7 @@ let capabilities: [(name: String, dependencies: [Target.Dependency])] = [
 let swiftJava: Target.Dependency = .product(name: "SwiftJava", package: "swift-java")
 
 let package = Package(
-    name: "NucleantAndroid",
+    name: "NucleantAndroidSDK",
     platforms: [
         // Host builds only (Android has no availability floor here): Mutex from
         // Synchronization needs macOS 15.
@@ -92,7 +92,7 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "NucleantAndroidTests",
+            name: "NucleantAndroidSDKTests",
             dependencies: ["AndroidCore"] + capabilities.map { .byName(name: $0.name) }
         ),
     ]
