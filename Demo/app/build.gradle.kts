@@ -7,7 +7,7 @@ plugins {
 
 // ── The Swift side ───────────────────────────────────────────────────────────
 //
-// The app's Swift is NucleantAndroid itself (the package two levels up): its
+// The app's Swift is NucleantAndroidSDK itself (the package two levels up): its
 // DeviceLabBridge product, libDeviceLabBridge.so, cross-compiled here once per
 // ABI with the installed Swift Android SDK. Then:
 //
