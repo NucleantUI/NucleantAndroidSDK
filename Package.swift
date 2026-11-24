@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.3
 //
 // NucleantAndroidSDK — Swift APIs over the Android SDK, through swift-java.
 //
