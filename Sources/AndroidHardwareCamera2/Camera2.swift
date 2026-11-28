@@ -37,10 +37,10 @@ open class CameraManager: JavaObject {
     open func getTorchStrengthLevel(_ cameraId: String) throws -> Int32
 
     @JavaMethod
-    open func registerTorchCallback(_ callback: CameraManagerTorchCallback?, _ handler: Handler?)
+    open func registerTorchCallback(_ callback: CameraManagerTorchCallback?, _ handler: Handler?) throws
 
     @JavaMethod
-    open func unregisterTorchCallback(_ callback: CameraManagerTorchCallback?)
+    open func unregisterTorchCallback(_ callback: CameraManagerTorchCallback?) throws
 
     @JavaMethod
     open func openCamera(_ cameraId: String, _ callback: CameraDeviceStateCallback?, _ handler: Handler?) throws
@@ -54,7 +54,7 @@ extension CameraManager {
     /// The camera service of the attached app.
     public static func service(in environment: JNIEnvironment) throws -> CameraManager {
         let context = try AndroidContext.shared.applicationContext(in: environment)
-        guard let manager = context.getSystemService("camera")?.as(CameraManager.self) else {
+        guard let manager = try context.getSystemService("camera")?.as(CameraManager.self) else {
             throw AndroidError.serviceUnavailable("camera")
         }
         return manager
@@ -68,7 +68,7 @@ extension CameraManager {
 open class CameraCharacteristics: JavaObject {
     /// `<T> T get(CameraCharacteristics.Key<T>)`.
     @JavaMethod
-    open func get(_ key: CameraCharacteristicsKey?) -> JavaObject!
+    open func get(_ key: CameraCharacteristicsKey?) throws -> JavaObject!
 }
 
 extension JavaClass<CameraCharacteristics> {
@@ -108,7 +108,7 @@ open class CameraCharacteristicsKey: JavaObject {}
 @JavaClass("android.hardware.camera2.params.StreamConfigurationMap")
 open class StreamConfigurationMap: JavaObject {
     @JavaMethod
-    open func getOutputSizes(_ format: Int32) -> [Size?]
+    open func getOutputSizes(_ format: Int32) throws -> [Size?]
 }
 
 // MARK: - CameraDevice
@@ -117,7 +117,7 @@ open class StreamConfigurationMap: JavaObject {
 @JavaClass("android.hardware.camera2.CameraDevice")
 open class CameraDevice: JavaObject {
     @JavaMethod
-    open func getId() -> String
+    open func getId() throws -> String
 
     @JavaMethod
     open func createCaptureRequest(_ templateType: Int32) throws -> CaptureRequestBuilder!
@@ -131,7 +131,7 @@ open class CameraDevice: JavaObject {
     ) throws
 
     @JavaMethod
-    open func close()
+    open func close() throws
 }
 
 extension CameraDevice {
@@ -166,7 +166,7 @@ open class CameraCaptureSession: JavaObject {
     open func stopRepeating() throws
 
     @JavaMethod
-    open func close()
+    open func close() throws
 }
 
 /// `android.hardware.camera2.CameraCaptureSession.StateCallback`.
@@ -187,10 +187,10 @@ open class CaptureRequest: JavaObject {}
 @JavaClass("android.hardware.camera2.CaptureRequest$Builder")
 open class CaptureRequestBuilder: JavaObject {
     @JavaMethod
-    open func addTarget(_ outputTarget: Surface?)
+    open func addTarget(_ outputTarget: Surface?) throws
 
     @JavaMethod
-    open func build() -> CaptureRequest!
+    open func build() throws -> CaptureRequest!
 }
 
 // MARK: - android.view.Surface
@@ -200,10 +200,10 @@ open class CaptureRequestBuilder: JavaObject {
 open class Surface: JavaObject {
     /// A surface that feeds `texture` (a preview into a TextureView, for one).
     @JavaMethod
-    @_nonoverride public convenience init(_ texture: SurfaceTexture?, environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(_ texture: SurfaceTexture?, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func release()
+    open func release() throws
 }
 
 /// `android.graphics.SurfaceTexture`: frames streamed into an OpenGL ES texture,
@@ -211,7 +211,7 @@ open class Surface: JavaObject {
 @JavaClass("android.graphics.SurfaceTexture")
 open class SurfaceTexture: JavaObject {
     @JavaMethod
-    open func setDefaultBufferSize(_ width: Int32, _ height: Int32)
+    open func setDefaultBufferSize(_ width: Int32, _ height: Int32) throws
 }
 
 // MARK: - android.media
@@ -220,10 +220,10 @@ open class SurfaceTexture: JavaObject {
 @JavaClass("android.media.ImageReader")
 open class ImageReader: JavaObject {
     @JavaMethod
-    open func getSurface() -> Surface!
+    open func getSurface() throws -> Surface!
 
     @JavaMethod
-    open func setOnImageAvailableListener(_ listener: ImageReaderOnImageAvailableListener?, _ handler: Handler?)
+    open func setOnImageAvailableListener(_ listener: ImageReaderOnImageAvailableListener?, _ handler: Handler?) throws
 
     @JavaMethod
     open func acquireLatestImage() throws -> Image!
@@ -232,12 +232,12 @@ open class ImageReader: JavaObject {
     open func acquireNextImage() throws -> Image!
 
     @JavaMethod
-    open func close()
+    open func close() throws
 }
 
 extension JavaClass<ImageReader> {
     @JavaStaticMethod
-    public func newInstance(_ width: Int32, _ height: Int32, _ format: Int32, _ maxImages: Int32) -> ImageReader!
+    public func newInstance(_ width: Int32, _ height: Int32, _ format: Int32, _ maxImages: Int32) throws -> ImageReader!
 }
 
 /// `android.media.ImageReader.OnImageAvailableListener`.
@@ -248,23 +248,23 @@ public struct ImageReaderOnImageAvailableListener {}
 @JavaClass("android.media.Image")
 open class Image: JavaObject {
     @JavaMethod
-    open func getWidth() -> Int32
+    open func getWidth() throws -> Int32
 
     @JavaMethod
-    open func getHeight() -> Int32
+    open func getHeight() throws -> Int32
 
     @JavaMethod
-    open func getPlanes() -> [ImagePlane?]
+    open func getPlanes() throws -> [ImagePlane?]
 
     @JavaMethod
-    open func close()
+    open func close() throws
 }
 
 /// `android.media.Image.Plane`.
 @JavaClass("android.media.Image$Plane")
 open class ImagePlane: JavaObject {
     @JavaMethod
-    open func getBuffer() -> JavaNioByteBuffer!
+    open func getBuffer() throws -> JavaNioByteBuffer!
 }
 
 /// `android.graphics.ImageFormat` values.
@@ -280,10 +280,10 @@ public enum ImageFormat {
 @JavaClass("java.nio.Buffer")
 open class JavaNioBuffer: JavaObject {
     @JavaMethod
-    open func position() -> Int32
+    open func position() throws -> Int32
 
     @JavaMethod
-    open func remaining() -> Int32
+    open func remaining() throws -> Int32
 }
 
 /// `java.nio.ByteBuffer`, as the Buffer it is.

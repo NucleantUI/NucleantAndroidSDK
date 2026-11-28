@@ -66,13 +66,13 @@ public final class ASensors: @unchecked Sendable {
     public init() throws {
         let environment = try JavaVirtualMachine.shared().environment()
         let context = try AndroidContext.shared.applicationContext(in: environment)
-        guard let manager = context.getSystemService("sensor")?.as(SensorManager.self) else {
+        guard let manager = try context.getSystemService("sensor")?.as(SensorManager.self) else {
             throw AndroidError.serviceUnavailable("sensor")
         }
         var sensors: [ASensor] = []
-        if let list = manager.getSensorList(-1) { // Sensor.TYPE_ALL
+        if let list = try manager.getSensorList(-1) { // Sensor.TYPE_ALL
             for sensor in list {
-                sensors.append(ASensor(sensor, manager: manager))
+                sensors.append(try ASensor(sensor, manager: manager))
             }
         }
         all = sensors
@@ -125,17 +125,17 @@ public final class ASensor: Identifiable, @unchecked Sendable {
     @ObservationIgnored private var listener: SensorListener?
     @ObservationIgnored private var handle: Int64 = 0
 
-    init(_ sensor: Sensor, manager: SensorManager) {
+    init(_ sensor: Sensor, manager: SensorManager) throws {
         self.sensor = sensor
         self.manager = manager
-        name = sensor.getName()
-        vendor = sensor.getVendor()
-        type = sensor.getType()
+        name = try sensor.getName()
+        vendor = try sensor.getVendor()
+        type = try sensor.getType()
         kind = ASensorKind(rawValue: type)
-        typeName = sensor.getStringType()
-        maximumRange = sensor.getMaximumRange()
-        resolution = sensor.getResolution()
-        power = sensor.getPower()
+        typeName = try sensor.getStringType()
+        maximumRange = try sensor.getMaximumRange()
+        resolution = try sensor.getResolution()
+        power = try sensor.getPower()
     }
 
     deinit {
@@ -145,8 +145,8 @@ public final class ASensor: Identifiable, @unchecked Sendable {
         let handle = self.handle
         try? AndroidMainThread.shared.post { environment in
             let listener = sensorListener.wrapped(as: SensorListener.self, in: environment)
-            listener.disarm()
-            manager.wrapped(as: SensorManager.self, in: environment).unregisterListener(listener.eventListener)
+            try? listener.disarm()
+            try? manager.wrapped(as: SensorManager.self, in: environment).unregisterListener(listener.eventListener)
             NativeHandle<ASensor>.release(handle)
         }
     }
@@ -182,19 +182,19 @@ public final class ASensor: Identifiable, @unchecked Sendable {
         let environment = try JavaVirtualMachine.shared().environment()
         if listener == nil {
             handle = NativeHandle.retain(self)
-            listener = SensorListener(handle, environment: environment)
+            listener = try SensorListener(handle, environment: environment)
         }
         guard let listener else { return false }
-        manager.unregisterListener(listener.eventListener)
-        isRunning = manager.registerListener(
+        try manager.unregisterListener(listener.eventListener)
+        isRunning = try manager.registerListener(
             listener.eventListener, sensor, rate.rawValue, try AndroidMainThread.shared.mainHandler(in: environment))
         self.rate = rate
         return isRunning
     }
 
-    public func stop() {
+    public func stop() throws {
         if let listener {
-            manager.unregisterListener(listener.eventListener)
+            try manager.unregisterListener(listener.eventListener)
         }
         isRunning = false
     }
@@ -226,40 +226,40 @@ public enum ASensorError: Error, CustomStringConvertible {
 @JavaClass("android.hardware.SensorManager")
 open class SensorManager: JavaObject {
     @JavaMethod
-    open func getSensorList(_ type: Int32) -> List<Sensor>!
+    open func getSensorList(_ type: Int32) throws -> List<Sensor>!
 
     @JavaMethod
     open func registerListener(
         _ listener: SensorEventListener?, _ sensor: Sensor?, _ samplingPeriodUs: Int32, _ handler: Handler?
-    ) -> Bool
+    ) throws -> Bool
 
     @JavaMethod
-    open func unregisterListener(_ listener: SensorEventListener?)
+    open func unregisterListener(_ listener: SensorEventListener?) throws
 }
 
 /// `android.hardware.Sensor`.
 @JavaClass("android.hardware.Sensor")
 open class Sensor: JavaObject {
     @JavaMethod
-    open func getName() -> String
+    open func getName() throws -> String
 
     @JavaMethod
-    open func getVendor() -> String
+    open func getVendor() throws -> String
 
     @JavaMethod
-    open func getType() -> Int32
+    open func getType() throws -> Int32
 
     @JavaMethod
-    open func getStringType() -> String
+    open func getStringType() throws -> String
 
     @JavaMethod
-    open func getMaximumRange() -> Float
+    open func getMaximumRange() throws -> Float
 
     @JavaMethod
-    open func getResolution() -> Float
+    open func getResolution() throws -> Float
 
     @JavaMethod
-    open func getPower() -> Float
+    open func getPower() throws -> Float
 }
 
 /// `android.hardware.SensorEventListener`.
@@ -271,10 +271,10 @@ public struct SensorEventListener {}
 @JavaClass("org.nucleantui.android.sensors.SensorListener", implements: SensorEventListener.self)
 class SensorListener: JavaObject {
     @JavaMethod
-    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 }
 
 extension SensorListener {

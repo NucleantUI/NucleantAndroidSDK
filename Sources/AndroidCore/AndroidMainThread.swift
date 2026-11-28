@@ -23,19 +23,28 @@ public final class AndroidMainThread: Sendable {
     private init() {}
 
     /// Run `body` on the main thread, later. Returns once it is queued.
-    public func post(_ body: @escaping @Sendable (JNIEnvironment) -> Void) throws {
+    ///
+    /// What `body` throws is thrown into the Java that runs it, the main
+    /// Looper, as an uncaught exception would be from any posted Runnable.
+    public func post(_ body: @escaping @Sendable (JNIEnvironment) throws -> Void) throws {
         try post(afterMilliseconds: 0, body)
     }
 
     /// Run `body` on the main thread once `milliseconds` have passed.
-    public func post(afterMilliseconds milliseconds: Int64, _ body: @escaping @Sendable (JNIEnvironment) -> Void) throws {
+    public func post(afterMilliseconds milliseconds: Int64, _ body: @escaping @Sendable (JNIEnvironment) throws -> Void) throws {
         let environment = try JavaVirtualMachine.shared().environment()
         let work = Unmanaged.passRetained(MainThreadWork(body))
-        let runnable = NativeRunnable(Int64(Int(bitPattern: work.toOpaque())), environment: environment)
-        let handler = try mainHandler(in: environment)
-        let posted = milliseconds > 0
-            ? handler.postDelayed(runnable.as(Runnable.self), milliseconds)
-            : handler.post(runnable.as(Runnable.self))
+        let posted: Bool
+        do {
+            let runnable = try NativeRunnable(Int64(Int(bitPattern: work.toOpaque())), environment: environment)
+            let handler = try mainHandler(in: environment)
+            posted = try milliseconds > 0
+                ? handler.postDelayed(runnable.as(Runnable.self), milliseconds)
+                : handler.post(runnable.as(Runnable.self))
+        } catch {
+            work.release()
+            throw error
+        }
         if !posted {
             work.release()
             throw AndroidError.mainThreadUnavailable
@@ -67,7 +76,7 @@ public final class AndroidMainThread: Sendable {
         guard let looper = try JavaClass<Looper>(environment: environment).getMainLooper() else {
             throw AndroidError.mainThreadUnavailable
         }
-        return looper.isCurrentThread()
+        return try looper.isCurrentThread()
     }
 
     /// A Handler on the main Looper, for framework calls that deliver their
@@ -76,15 +85,15 @@ public final class AndroidMainThread: Sendable {
         guard let looper = try JavaClass<Looper>(environment: environment).getMainLooper() else {
             throw AndroidError.mainThreadUnavailable
         }
-        return Handler(looper, environment: environment)
+        return try Handler(looper, environment: environment)
     }
 }
 
 /// The closure a NativeRunnable carries, retained until it has run.
 private final class MainThreadWork {
-    let body: @Sendable (JNIEnvironment) -> Void
+    let body: @Sendable (JNIEnvironment) throws -> Void
 
-    init(_ body: @escaping @Sendable (JNIEnvironment) -> Void) {
+    init(_ body: @escaping @Sendable (JNIEnvironment) throws -> Void) {
         self.body = body
     }
 }
@@ -92,9 +101,9 @@ private final class MainThreadWork {
 @JavaImplementation("org.nucleantui.android.NativeRunnable")
 extension NativeRunnable {
     @JavaMethod
-    static func nativeRun(_ handle: Int64, environment: JNIEnvironment) {
+    static func nativeRun(_ handle: Int64, environment: JNIEnvironment) throws {
         guard let pointer = UnsafeRawPointer(bitPattern: Int(handle)) else { return }
         let work = Unmanaged<MainThreadWork>.fromOpaque(pointer).takeRetainedValue()
-        work.body(environment)
+        try work.body(environment)
     }
 }

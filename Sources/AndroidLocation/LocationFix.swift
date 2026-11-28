@@ -36,11 +36,11 @@ extension ALocation {
             throw ALocationError.noGeocoder
         }
         let context = try AndroidContext.shared.applicationContext(in: environment)
-        let geocoder = Geocoder(context, environment: environment)
+        let geocoder = try Geocoder(context, environment: environment)
         var addresses: [AAddress] = []
         if let list = try geocoder.getFromLocation(fix.latitude, fix.longitude, Int32(maxResults)) {
             for address in list {
-                addresses.append(AAddress(address))
+                addresses.append(try AAddress(address))
             }
         }
         return addresses
@@ -81,12 +81,12 @@ final class FixRequestSession: @unchecked Sendable {
         handle = NativeHandle.retain(self)
         do {
             let provider = try location.fixProvider()
-            let request = FixRequest(handle, environment: environment)
+            let request = try FixRequest(handle, environment: environment)
             self.request = request
             let manager = location.locationManager
             if try AndroidContext.shared.sdkLevel(in: environment) >= 30 {
                 let context = try AndroidContext.shared.applicationContext(in: environment)
-                let cancel = CancellationSignal(environment: environment)
+                let cancel = try CancellationSignal(environment: environment)
                 self.cancel = cancel
                 try manager.getCurrentLocation(provider, cancel, context.getMainExecutor(), request.as(JavaConsumer.self))
             } else {
@@ -106,18 +106,22 @@ final class FixRequestSession: @unchecked Sendable {
             finish(.failure(ALocationError.noFix))
             return
         }
-        let fix = ALocationFix(location)
-        self.location.fixArrived(fix)
-        finish(.success(fix))
+        do {
+            let fix = try ALocationFix(location)
+            self.location.fixArrived(fix)
+            finish(.success(fix))
+        } catch {
+            finish(.failure(error))
+        }
     }
 
     private func finish(_ result: Result<ALocationFix, any Error>) {
         guard let continuation else { return }
         self.continuation = nil
-        request?.disarm()
-        cancel?.cancel()
+        try? request?.disarm()
+        try? cancel?.cancel()
         if let request {
-            location.locationManager.removeUpdates(request.as(LocationListener.self))
+            try? location.locationManager.removeUpdates(request.as(LocationListener.self))
         }
         continuation.resume(with: result)
         NativeHandle<FixRequestSession>.release(handle)
@@ -138,16 +142,16 @@ public final class AAddress: Sendable {
     public let countryName: String
     public let countryCode: String
 
-    init(_ address: Address) {
-        let last = address.getMaxAddressLineIndex()
-        lines = last < 0 ? [] : (0...last).map { address.getAddressLine($0) }
-        thoroughfare = address.getThoroughfare()
-        subThoroughfare = address.getSubThoroughfare()
-        locality = address.getLocality()
-        postalCode = address.getPostalCode()
-        adminArea = address.getAdminArea()
-        countryName = address.getCountryName()
-        countryCode = address.getCountryCode()
+    init(_ address: Address) throws {
+        let last = try address.getMaxAddressLineIndex()
+        lines = last < 0 ? [] : try (0...last).map { try address.getAddressLine($0) }
+        thoroughfare = try address.getThoroughfare()
+        subThoroughfare = try address.getSubThoroughfare()
+        locality = try address.getLocality()
+        postalCode = try address.getPostalCode()
+        adminArea = try address.getAdminArea()
+        countryName = try address.getCountryName()
+        countryCode = try address.getCountryCode()
     }
 }
 
@@ -170,7 +174,7 @@ public struct JavaConsumer {}
 @JavaClass("android.location.Geocoder")
 open class Geocoder: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(_ context: Context?, environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(_ context: Context?, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
     open func getFromLocation(_ latitude: Double, _ longitude: Double, _ maxResults: Int32) throws -> List<Address>!
@@ -178,21 +182,21 @@ open class Geocoder: JavaObject {
 
 extension JavaClass<Geocoder> {
     @JavaStaticMethod
-    public func isPresent() -> Bool
+    public func isPresent() throws -> Bool
 }
 
 /// `android.location.Address`. Missing parts come back as "".
 @JavaClass("android.location.Address")
 open class Address: JavaObject {
-    @JavaMethod open func getMaxAddressLineIndex() -> Int32
-    @JavaMethod open func getAddressLine(_ index: Int32) -> String
-    @JavaMethod open func getThoroughfare() -> String
-    @JavaMethod open func getSubThoroughfare() -> String
-    @JavaMethod open func getLocality() -> String
-    @JavaMethod open func getPostalCode() -> String
-    @JavaMethod open func getAdminArea() -> String
-    @JavaMethod open func getCountryName() -> String
-    @JavaMethod open func getCountryCode() -> String
+    @JavaMethod open func getMaxAddressLineIndex() throws -> Int32
+    @JavaMethod open func getAddressLine(_ index: Int32) throws -> String
+    @JavaMethod open func getThoroughfare() throws -> String
+    @JavaMethod open func getSubThoroughfare() throws -> String
+    @JavaMethod open func getLocality() throws -> String
+    @JavaMethod open func getPostalCode() throws -> String
+    @JavaMethod open func getAdminArea() throws -> String
+    @JavaMethod open func getCountryName() throws -> String
+    @JavaMethod open func getCountryCode() throws -> String
 }
 
 // MARK: - FixRequest (Android/java)
@@ -200,10 +204,10 @@ open class Address: JavaObject {
 @JavaClass("org.nucleantui.android.location.FixRequest", implements: LocationListener.self, JavaConsumer.self)
 class FixRequest: JavaObject {
     @JavaMethod
-    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 }
 
 @JavaImplementation("org.nucleantui.android.location.FixRequest")

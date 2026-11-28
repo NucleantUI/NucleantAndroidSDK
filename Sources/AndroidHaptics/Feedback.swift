@@ -65,7 +65,7 @@ extension AVibrator {
         guard let view = try AndroidContext.shared.activity(in: environment).getWindow()?.getDecorView() else {
             return false
         }
-        return view.performHapticFeedback(feedback.rawValue)
+        return try view.performHapticFeedback(feedback.rawValue)
     }
 }
 
@@ -73,12 +73,12 @@ extension AVibrator {
 
 extension Window {
     @JavaMethod
-    func getDecorView() -> FeedbackView!
+    func getDecorView() throws -> FeedbackView!
 }
 
 /// `android.view.View`: what feedback needs of it.
 @JavaClass("android.view.View")
 open class FeedbackView: JavaObject {
     @JavaMethod
-    open func performHapticFeedback(_ feedbackConstant: Int32) -> Bool
+    open func performHapticFeedback(_ feedbackConstant: Int32) throws -> Bool
 }

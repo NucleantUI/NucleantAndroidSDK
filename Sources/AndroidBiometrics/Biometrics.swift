@@ -45,19 +45,19 @@ public final class ABiometrics: @unchecked Sendable {
     public init() throws {
         let environment = try JavaVirtualMachine.shared().environment()
         let context = try AndroidContext.shared.applicationContext(in: environment)
-        guard let manager = context.getSystemService("biometric")?.as(BiometricManager.self) else {
+        guard let manager = try context.getSystemService("biometric")?.as(BiometricManager.self) else {
             throw AndroidError.serviceUnavailable("biometric")
         }
         self.manager = manager
         self.sdkLevel = try AndroidContext.shared.sdkLevel(in: environment)
         self.availability = .unavailable
-        refresh()
+        try refresh()
     }
 
     /// Check the hardware and enrollment again.
-    public func refresh() {
+    public func refresh() throws {
         availability = ABiometricAvailability(
-            rawValue: sdkLevel >= 30 ? manager.canAuthenticate(Self.biometricWeak) : manager.canAuthenticate()) ?? .unknown
+            rawValue: try sdkLevel >= 30 ? manager.canAuthenticate(Self.biometricWeak) : manager.canAuthenticate()) ?? .unknown
     }
 
     /// Show the system's biometric prompt. True when the user authenticated,
@@ -89,33 +89,40 @@ public final class ABiometrics: @unchecked Sendable {
             continuation.resume(throwing: ABiometricError.busy)
             return
         }
+        // Once it exists, the authentication answers the continuation.
+        var authentication: Authentication?
         do {
             let activity = try AndroidContext.shared.activity(in: environment)
-            guard let executor = activity.getMainExecutor() else {
+            guard let executor = try activity.getMainExecutor() else {
                 throw AndroidError.mainThreadUnavailable
             }
-            let authentication = Authentication(biometrics: self, continuation: continuation)
-            let callbacks = AuthenticationCallbacks(authentication.handle, environment: environment)
-            authentication.callbacks = callbacks
+            let started = Authentication(biometrics: self, continuation: continuation)
+            authentication = started
+            let callbacks = try AuthenticationCallbacks(started.handle, environment: environment)
+            started.callbacks = callbacks
 
-            let builder = BiometricPromptBuilder(activity, environment: environment)
-            _ = builder.setTitle(charSequence(title, in: environment))
+            let builder = try BiometricPromptBuilder(activity, environment: environment)
+            _ = try builder.setTitle(charSequence(title, in: environment))
             if let subtitle {
-                _ = builder.setSubtitle(charSequence(subtitle, in: environment))
+                _ = try builder.setSubtitle(charSequence(subtitle, in: environment))
             }
-            _ = builder.setNegativeButton(
+            _ = try builder.setNegativeButton(
                 charSequence(cancelTitle, in: environment), executor, callbacks.as(DialogInterfaceOnClickListener.self))
             if sdkLevel >= 30 {
-                _ = builder.setAllowedAuthenticators(Self.biometricWeak)
+                _ = try builder.setAllowedAuthenticators(Self.biometricWeak)
             }
-            guard let prompt = builder.build() else {
+            guard let prompt = try builder.build() else {
                 throw ABiometricError.promptFailed
             }
             failedAttempts = 0
             isAuthenticating = true
-            prompt.authenticate(CancellationSignal(environment: environment), executor, callbacks)
+            try prompt.authenticate(CancellationSignal(environment: environment), executor, callbacks)
         } catch {
-            continuation.resume(throwing: error)
+            if let authentication {
+                authentication.finish(.failure(error))
+            } else {
+                continuation.resume(throwing: error)
+            }
         }
     }
 
@@ -123,9 +130,9 @@ public final class ABiometrics: @unchecked Sendable {
         failedAttempts += 1
     }
 
-    func finished() {
+    func finished() throws {
         isAuthenticating = false
-        refresh()
+        try refresh()
     }
 
     /// `BiometricManager.Authenticators.BIOMETRIC_WEAK`.
@@ -151,18 +158,29 @@ final class Authentication: @unchecked Sendable {
 
     /// code: 0 success, -1 the cancel button, else `BIOMETRIC_ERROR_*`.
     func finished(code: Int32, message: String) {
-        guard let continuation else { return }
-        self.continuation = nil
-        callbacks?.disarm()
-        biometrics.finished()
         switch code {
         case 0:
-            continuation.resume(returning: true)
+            finish(.success(true))
         case -1, 5, 10, 13: // cancel button, CANCELED, USER_CANCELED, NEGATIVE_BUTTON
-            continuation.resume(returning: false)
+            finish(.success(false))
         default:
-            continuation.resume(throwing: ABiometricError.failed(code: code, message: message))
+            finish(.failure(ABiometricError.failed(code: code, message: message)))
         }
+    }
+
+    /// Answer `authenticate` with `result`: the prompt's outcome, or why it
+    /// could not be shown. A failure while wrapping up is the answer instead.
+    func finish(_ result: Result<Bool, any Error>) {
+        guard let continuation else { return }
+        self.continuation = nil
+        var result = result
+        do {
+            try biometrics.finished()
+        } catch {
+            result = .failure(error)
+        }
+        try? callbacks?.disarm()
+        continuation.resume(with: result)
         NativeHandle<Authentication>.release(handle)
         retainedSelf?.release()
         retainedSelf = nil
@@ -191,11 +209,11 @@ public enum ABiometricError: Error, CustomStringConvertible {
 open class BiometricManager: JavaObject {
     /// API 29 (deprecated in 30).
     @JavaMethod
-    open func canAuthenticate() -> Int32
+    open func canAuthenticate() throws -> Int32
 
     /// API 30.
     @JavaMethod
-    open func canAuthenticate(_ authenticators: Int32) -> Int32
+    open func canAuthenticate(_ authenticators: Int32) throws -> Int32
 }
 
 /// `android.hardware.biometrics.BiometricPrompt`.
@@ -203,32 +221,32 @@ open class BiometricManager: JavaObject {
 open class BiometricPrompt: JavaObject {
     @JavaMethod
     open func authenticate(
-        _ cancel: CancellationSignal?, _ executor: Executor?, _ callback: BiometricPromptAuthenticationCallback?)
+        _ cancel: CancellationSignal?, _ executor: Executor?, _ callback: BiometricPromptAuthenticationCallback?) throws
 }
 
 /// `android.hardware.biometrics.BiometricPrompt.Builder`.
 @JavaClass("android.hardware.biometrics.BiometricPrompt$Builder")
 open class BiometricPromptBuilder: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(_ context: Context?, environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(_ context: Context?, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func setTitle(_ title: CharSequence?) -> BiometricPromptBuilder!
+    open func setTitle(_ title: CharSequence?) throws -> BiometricPromptBuilder!
 
     @JavaMethod
-    open func setSubtitle(_ subtitle: CharSequence?) -> BiometricPromptBuilder!
+    open func setSubtitle(_ subtitle: CharSequence?) throws -> BiometricPromptBuilder!
 
     @JavaMethod
     open func setNegativeButton(
         _ text: CharSequence?, _ executor: Executor?, _ listener: DialogInterfaceOnClickListener?
-    ) -> BiometricPromptBuilder!
+    ) throws -> BiometricPromptBuilder!
 
     /// API 30.
     @JavaMethod
-    open func setAllowedAuthenticators(_ authenticators: Int32) -> BiometricPromptBuilder!
+    open func setAllowedAuthenticators(_ authenticators: Int32) throws -> BiometricPromptBuilder!
 
     @JavaMethod
-    open func build() -> BiometricPrompt!
+    open func build() throws -> BiometricPrompt!
 }
 
 /// `android.hardware.biometrics.BiometricPrompt.AuthenticationCallback`.
@@ -244,10 +262,10 @@ public struct DialogInterfaceOnClickListener {}
 @JavaClass("org.nucleantui.android.biometrics.AuthenticationCallbacks", implements: DialogInterfaceOnClickListener.self)
 class AuthenticationCallbacks: BiometricPromptAuthenticationCallback {
     @JavaMethod
-    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 }
 
 @JavaImplementation("org.nucleantui.android.biometrics.AuthenticationCallbacks")

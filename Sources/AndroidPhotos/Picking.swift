@@ -19,16 +19,16 @@ extension APhotoLibrary {
         let environment = try JavaVirtualMachine.shared().environment()
         let intent: Intent
         if try AndroidContext.shared.sdkLevel(in: environment) >= 33 {
-            intent = Intent("android.provider.action.PICK_IMAGES", environment: environment)
+            intent = try Intent("android.provider.action.PICK_IMAGES", environment: environment)
         } else {
-            intent = Intent("android.intent.action.GET_CONTENT", environment: environment)
-            _ = intent.setType("image/*")
-            _ = intent.addCategory("android.intent.category.OPENABLE")
+            intent = try Intent("android.intent.action.GET_CONTENT", environment: environment)
+            _ = try intent.setType("image/*")
+            _ = try intent.addCategory("android.intent.category.OPENABLE")
         }
         let result = try await AndroidContext.shared.startActivityForResult(intent)
         guard result.isOK else { return nil }
         let answer = try JavaVirtualMachine.shared().environment()
-        guard let uri = result.data?.wrapped(as: Intent.self, in: answer).getData() else {
+        guard let uri = try result.data?.wrapped(as: Intent.self, in: answer).getData() else {
             throw AndroidError.unexpectedResult("The photo picker sent back no photo")
         }
         return try APickedImage(uri: uri, in: answer)
@@ -48,9 +48,9 @@ extension APhotoLibrary {
         }
         let (uri, id) = try insertEmptyPhoto(name: name)
         let environment = try JavaVirtualMachine.shared().environment()
-        let intent = Intent("android.media.action.IMAGE_CAPTURE", environment: environment)
-        _ = intent.putExtra("output", uri.wrapped(as: Uri.self, in: environment).as(Parcelable.self))
-        _ = intent.addFlags(Self.flagGrantReadURIPermission | Self.flagGrantWriteURIPermission)
+        let intent = try Intent("android.media.action.IMAGE_CAPTURE", environment: environment)
+        _ = try intent.putExtra("output", uri.wrapped(as: Uri.self, in: environment).as(Parcelable.self))
+        _ = try intent.addFlags(Self.flagGrantReadURIPermission | Self.flagGrantWriteURIPermission)
 
         let result: AndroidActivityResult
         do {
@@ -73,11 +73,11 @@ extension APhotoLibrary {
     private func insertEmptyPhoto(name: String) throws -> (uri: JavaGlobalReference, id: Int64) {
         let environment = try JavaVirtualMachine.shared().environment()
         let resolver = try contentResolverForThread()
-        let values = ContentValues(environment: environment)
-        values.put("_display_name", JavaString(name, environment: environment))
-        values.put("mime_type", JavaString("image/jpeg", environment: environment))
-        values.put("relative_path", JavaString("Pictures/\(album)", environment: environment))
-        guard let uri = try resolver.insert(try imagesURIForThread(), values), let id = Int64(uri.getLastPathSegment()) else {
+        let values = try ContentValues(environment: environment)
+        try values.put("_display_name", JavaString(name, environment: environment))
+        try values.put("mime_type", JavaString("image/jpeg", environment: environment))
+        try values.put("relative_path", JavaString("Pictures/\(album)", environment: environment))
+        guard let uri = try resolver.insert(try imagesURIForThread(), values), let id = Int64(try uri.getLastPathSegment()) else {
             throw APhotoLibraryError.insertFailed
         }
         return (JavaGlobalReference(uri), id)
@@ -107,21 +107,21 @@ public final class APickedImage: @unchecked Sendable {
     init(uri: Uri, in environment: JNIEnvironment) throws {
         self.uri = uri
         let resolver = try pickedContentResolver(in: environment)
-        mimeType = resolver.getType(uri)
-        var name = uri.getLastPathSegment()
+        mimeType = try resolver.getType(uri)
+        var name = try uri.getLastPathSegment()
         var rotation = 0
         if let cursor = try? resolver.query(uri, ["_display_name"], nil, [], nil) {
-            if cursor.moveToNext(), let column = try? cursor.getColumnIndexOrThrow("_display_name") {
-                name = cursor.getString(column)
+            defer { try? cursor.close() }
+            if try cursor.moveToNext(), let column = try? cursor.getColumnIndexOrThrow("_display_name") {
+                name = try cursor.getString(column)
             }
-            cursor.close()
         }
         // The photo picker's provider has MediaStore's columns; a document provider may not.
         if let cursor = try? resolver.query(uri, ["orientation"], nil, [], nil) {
-            if cursor.moveToNext(), let column = try? cursor.getColumnIndexOrThrow("orientation") {
-                rotation = Int(cursor.getInt(column))
+            defer { try? cursor.close() }
+            if try cursor.moveToNext(), let column = try? cursor.getColumnIndexOrThrow("orientation") {
+                rotation = Int(try cursor.getInt(column))
             }
-            cursor.close()
         }
         self.name = name
         self.rotation = rotation
@@ -131,7 +131,7 @@ public final class APickedImage: @unchecked Sendable {
     public func data() async throws -> [UInt8] {
         let environment = try JavaVirtualMachine.shared().environment()
         guard let file = try pickedContentResolver(in: environment).openFileDescriptor(try uri.boundToCurrentThread(), "r") else {
-            throw APhotoLibraryError.notFound(uri.getLastPathSegment())
+            throw APhotoLibraryError.notFound(try uri.getLastPathSegment())
         }
         return try readAll(fileDescriptor: file.detachFd())
     }

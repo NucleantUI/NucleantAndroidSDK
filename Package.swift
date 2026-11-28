@@ -76,7 +76,7 @@ let package = Package(
     } + [
         .testTarget(
             name: "NucleantAndroidSDKTests",
-            dependencies: ["AndroidCore"] + capabilities.map { .byName(name: $0.name) }
+            dependencies: ["AndroidCore", swiftJava] + capabilities.map { .byName(name: $0.name) }
         ),
     ]
 )

@@ -57,7 +57,7 @@ public final class ACameras: @unchecked Sendable {
             if let existing = all.first(where: { $0.id == id }) {
                 cameras.append(existing)
             } else if let characteristics = try manager.getCameraCharacteristics(id) {
-                cameras.append(ACamera(id: id, characteristics: characteristics, keys: keys))
+                cameras.append(try ACamera(id: id, characteristics: characteristics, keys: keys))
             }
         }
         all = cameras
@@ -114,19 +114,19 @@ public final class ACamera: Identifiable, @unchecked Sendable {
 
     @ObservationIgnored private var previewSession: CameraSession?
 
-    init(id: String, characteristics: CameraCharacteristics, keys: JavaClass<CameraCharacteristics>) {
+    init(id: String, characteristics: CameraCharacteristics, keys: JavaClass<CameraCharacteristics>) throws {
         self.id = id
         self.characteristics = characteristics
-        let facing = characteristics.get(keys.LENS_FACING)?.as(JavaInteger.self)?.intValue()
+        let facing = try characteristics.get(keys.LENS_FACING)?.as(JavaInteger.self)?.intValue()
         position = facing.flatMap(ACameraPosition.init(rawValue:)) ?? .external
-        hasFlash = characteristics.get(keys.FLASH_INFO_AVAILABLE)?.as(JavaBoolean.self)?.booleanValue() ?? false
-        sensorOrientation = Int(characteristics.get(keys.SENSOR_ORIENTATION)?.as(JavaInteger.self)?.intValue() ?? 0)
+        hasFlash = try characteristics.get(keys.FLASH_INFO_AVAILABLE)?.as(JavaBoolean.self)?.booleanValue() ?? false
+        sensorOrientation = Int(try characteristics.get(keys.SENSOR_ORIENTATION)?.as(JavaInteger.self)?.intValue() ?? 0)
 
-        let streams = characteristics.get(keys.SCALER_STREAM_CONFIGURATION_MAP)?.as(StreamConfigurationMap.self)
-        photoSizes = (streams?.getOutputSizes(ImageFormat.jpeg) ?? []).compactMap { $0 }
-            .sorted { Self.pixelCount($0) > Self.pixelCount($1) }
-        warmupSizes = (streams?.getOutputSizes(ImageFormat.yuv420888) ?? []).compactMap { $0 }
-            .sorted { Self.pixelCount($0) < Self.pixelCount($1) }
+        let streams = try characteristics.get(keys.SCALER_STREAM_CONFIGURATION_MAP)?.as(StreamConfigurationMap.self)
+        photoSizes = try (streams?.getOutputSizes(ImageFormat.jpeg) ?? []).compactMap { $0 }
+            .sorted { try Self.pixelCount($0) > Self.pixelCount($1) }
+        warmupSizes = try (streams?.getOutputSizes(ImageFormat.yuv420888) ?? []).compactMap { $0 }
+            .sorted { try Self.pixelCount($0) < Self.pixelCount($1) }
     }
 
     // MARK: - Preview
@@ -144,8 +144,8 @@ public final class ACamera: Identifiable, @unchecked Sendable {
         }
         stopPreview()
         let environment = try JavaVirtualMachine.shared().environment()
-        let photos = Self.dimensions(photoSizes)
-        let streams = Self.dimensions(warmupSizes)
+        let photos = try Self.dimensions(photoSizes)
+        let streams = try Self.dimensions(warmupSizes)
         guard let photoIndex = Self.photoSizeIndex(in: photos, maxPixelCount: maxPixelCount),
               let previewIndex = Self.previewSizeIndex(in: streams, matching: photos[photoIndex])
         else {
@@ -226,29 +226,32 @@ public final class ACamera: Identifiable, @unchecked Sendable {
             previewSession.takePhoto(completion: finished)
             return
         }
-        guard let photoIndex = Self.photoSizeIndex(in: Self.dimensions(photoSizes), maxPixelCount: maxPixelCount),
-              let warmupIndex = Self.warmupSizeIndex(in: Self.dimensions(warmupSizes))
-        else {
-            continuation.resume(throwing: ACameraError.noOutputSizes(id))
-            return
+        do {
+            guard let photoIndex = Self.photoSizeIndex(in: try Self.dimensions(photoSizes), maxPixelCount: maxPixelCount),
+                  let warmupIndex = Self.warmupSizeIndex(in: try Self.dimensions(warmupSizes))
+            else {
+                throw ACameraError.noOutputSizes(id)
+            }
+            isCapturing = true
+            CameraSession(
+                camera: self,
+                photoSize: photoSizes[photoIndex],
+                warmupSize: warmupSizes[warmupIndex],
+                completion: finished
+            ).start(in: environment)
+        } catch {
+            continuation.resume(throwing: error)
         }
-        isCapturing = true
-        CameraSession(
-            camera: self,
-            photoSize: photoSizes[photoIndex],
-            warmupSize: warmupSizes[warmupIndex],
-            completion: finished
-        ).start(in: environment)
     }
 
     // MARK: - Sizes
 
-    static func pixelCount(_ size: Size) -> Int {
-        Int(size.getWidth()) * Int(size.getHeight())
+    static func pixelCount(_ size: Size) throws -> Int {
+        Int(try size.getWidth()) * Int(try size.getHeight())
     }
 
-    static func dimensions(_ sizes: [Size]) -> [(width: Int, height: Int)] {
-        sizes.map { (width: Int($0.getWidth()), height: Int($0.getHeight())) }
+    static func dimensions(_ sizes: [Size]) throws -> [(width: Int, height: Int)] {
+        try sizes.map { (width: Int(try $0.getWidth()), height: Int(try $0.getHeight())) }
     }
 
     /// The largest of `sizes` with at most `maxPixelCount` pixels, else the smallest.

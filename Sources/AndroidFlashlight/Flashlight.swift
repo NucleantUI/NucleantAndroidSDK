@@ -48,9 +48,9 @@ public final class AFlashlight: @unchecked Sendable {
         var chosen: (id: String, characteristics: CameraCharacteristics)?
         for id in try manager.getCameraIdList() {
             guard let characteristics = try manager.getCameraCharacteristics(id),
-                  characteristics.get(keys.FLASH_INFO_AVAILABLE)?.as(JavaBoolean.self)?.booleanValue() == true
+                  try characteristics.get(keys.FLASH_INFO_AVAILABLE)?.as(JavaBoolean.self)?.booleanValue() == true
             else { continue }
-            let facing = characteristics.get(keys.LENS_FACING)?.as(JavaInteger.self)?.intValue()
+            let facing = try characteristics.get(keys.LENS_FACING)?.as(JavaInteger.self)?.intValue()
             if chosen == nil || facing == Self.lensFacingBack {
                 chosen = (id, characteristics)
             }
@@ -61,9 +61,9 @@ public final class AFlashlight: @unchecked Sendable {
         var maximumLevel = 1
         var defaultLevel = 1
         if sdkLevel >= 33 {
-            maximumLevel = Int(chosen.characteristics.get(keys.FLASH_INFO_STRENGTH_MAXIMUM_LEVEL)?
+            maximumLevel = Int(try chosen.characteristics.get(keys.FLASH_INFO_STRENGTH_MAXIMUM_LEVEL)?
                 .as(JavaInteger.self)?.intValue() ?? 1)
-            defaultLevel = Int(chosen.characteristics.get(keys.FLASH_INFO_STRENGTH_DEFAULT_LEVEL)?
+            defaultLevel = Int(try chosen.characteristics.get(keys.FLASH_INFO_STRENGTH_DEFAULT_LEVEL)?
                 .as(JavaInteger.self)?.intValue() ?? Int32(maximumLevel))
         }
         self.manager = manager
@@ -73,10 +73,10 @@ public final class AFlashlight: @unchecked Sendable {
 
         // Android calls back right away with the current state, then on every change.
         let handle = NativeHandle.retain(self)
-        let callback = TorchCallback(handle, environment: environment)
+        let callback = try TorchCallback(handle, environment: environment)
         self.handle = handle
         self.torchCallback = callback
-        manager.registerTorchCallback(callback, try AndroidMainThread.shared.mainHandler(in: environment))
+        try manager.registerTorchCallback(callback, try AndroidMainThread.shared.mainHandler(in: environment))
     }
 
     deinit {
@@ -86,8 +86,8 @@ public final class AFlashlight: @unchecked Sendable {
         let handle = self.handle
         try? AndroidMainThread.shared.post { environment in
             let torchCallback = callback.wrapped(as: TorchCallback.self, in: environment)
-            torchCallback.disarm()
-            manager.wrapped(as: CameraManager.self, in: environment).unregisterTorchCallback(torchCallback)
+            try? torchCallback.disarm()
+            try? manager.wrapped(as: CameraManager.self, in: environment).unregisterTorchCallback(torchCallback)
             NativeHandle<AFlashlight>.release(handle)
         }
     }
@@ -173,10 +173,10 @@ public final class AFlashlight: @unchecked Sendable {
 @JavaClass("org.nucleantui.android.flashlight.TorchCallback")
 class TorchCallback: CameraManagerTorchCallback {
     @JavaMethod
-    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 }
 
 @JavaImplementation("org.nucleantui.android.flashlight.TorchCallback")

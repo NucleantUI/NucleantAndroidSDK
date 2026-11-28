@@ -61,7 +61,7 @@ public final class LabLocation: @unchecked Sendable {
                 : address.lines.joined(separator: ", ")
         }
     }
-    public func stop() { location.stopUpdates() }
+    public func stop() throws { try location.stopUpdates() }
     public func refresh() throws { try location.refresh() }
 
     /// `listener` is a `java.lang.Runnable`, run on the main thread after each change.
@@ -89,8 +89,8 @@ public final class LabClipboard: @unchecked Sendable {
     public var changeCount: Int64 { Int64(clipboard.changeCount) }
 
     public func setText(text: String) throws { try clipboard.setText(text, label: "Device Lab") }
-    public func clear() { clipboard.clear() }
-    public func refresh() { clipboard.refresh() }
+    public func clear() throws { try clipboard.clear() }
+    public func refresh() throws { try clipboard.refresh() }
 
     /// `listener` is a `java.lang.Runnable`, run on the main thread after each change.
     public func observe(listener: JavaObject) {
@@ -157,14 +157,14 @@ public final class LabNotifications: @unchecked Sendable {
         try notifications.createChannel(id: id, name: name, importance: level)
     }
 
-    public func deleteChannel(id: String) { notifications.deleteChannel(id) }
-    public func cancel(id: Int32) { notifications.cancel(id) }
+    public func deleteChannel(id: String) throws { try notifications.deleteChannel(id) }
+    public func cancel(id: Int32) throws { try notifications.cancel(id) }
 
     /// The id of the last notification tapped; -1 when none has been.
     public var lastTapped: Int32 { notifications.lastTapped ?? -1 }
     public var tapCount: Int32 { Int32(notifications.tapCount) }
-    public func cancelAll() { notifications.cancelAll() }
-    public func refresh() { notifications.refresh() }
+    public func cancelAll() throws { try notifications.cancelAll() }
+    public func refresh() throws { try notifications.refresh() }
 
     /// `listener` is a `java.lang.Runnable`, run on the main thread after each change.
     public func observe(listener: JavaObject) {
@@ -192,9 +192,9 @@ public final class LabSpeech: @unchecked Sendable {
     public var pitch: Float { speech.pitch }
 
     public func speak(text: String) throws { try speech.speak(text) }
-    public func stop() { speech.stop() }
-    public func setRate(rate: Float) { speech.setRate(rate) }
-    public func setPitch(pitch: Float) { speech.setPitch(pitch) }
+    public func stop() throws { try speech.stop() }
+    public func setRate(rate: Float) throws { try speech.setRate(rate) }
+    public func setPitch(pitch: Float) throws { try speech.setPitch(pitch) }
 
     /// `listener` is a `java.lang.Runnable`, run on the main thread after each change.
     public func observe(listener: JavaObject) {
@@ -223,7 +223,7 @@ public final class LabBiometrics: @unchecked Sendable {
         try await biometrics.authenticate(title: title, subtitle: subtitle.isEmpty ? nil : subtitle)
     }
 
-    public func refresh() { biometrics.refresh() }
+    public func refresh() throws { try biometrics.refresh() }
 
     /// `listener` is a `java.lang.Runnable`, run on the main thread after each change.
     public func observe(listener: JavaObject) {

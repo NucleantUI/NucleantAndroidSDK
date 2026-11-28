@@ -63,7 +63,7 @@ public final class APhotoLibrary: @unchecked Sendable {
         self.authorization = try Self.currentAuthorization(sdkLevel: sdkLevel)
 
         let handle = NativeHandle.retain(self)
-        let observer = MediaObserver(handle, try AndroidMainThread.shared.mainHandler(in: environment), environment: environment)
+        let observer = try MediaObserver(handle, try AndroidMainThread.shared.mainHandler(in: environment), environment: environment)
         self.handle = handle
         self.observer = observer
         try resolver.registerContentObserver(imagesURI, true, observer)
@@ -77,7 +77,7 @@ public final class APhotoLibrary: @unchecked Sendable {
         let handle = self.handle
         try? AndroidMainThread.shared.post { environment in
             let observer = mediaObserver.wrapped(as: MediaObserver.self, in: environment)
-            observer.disarm()
+            try? observer.disarm()
             try? resolver.wrapped(as: ContentResolver.self, in: environment).unregisterContentObserver(observer)
             NativeHandle<APhotoLibrary>.release(handle)
         }
@@ -115,7 +115,7 @@ public final class APhotoLibrary: @unchecked Sendable {
         for row in try Self.rows(from: cursor, limit: limit) {
             if let existing = photos.first(where: { $0.id == row.id }) {
                 updated.append(existing)
-            } else if let uri = uris.withAppendedId(imagesURI, row.id) {
+            } else if let uri = try uris.withAppendedId(imagesURI, row.id) {
                 updated.append(APhotoAsset(row, uri: uri))
             }
         }
@@ -162,12 +162,12 @@ public final class APhotoLibrary: @unchecked Sendable {
         func text(_ value: String) -> JavaString { JavaString(value, environment: environment) }
 
         // Pending while it is written, so no other app sees a half-written file.
-        let values = ContentValues(environment: environment)
-        values.put("_display_name", text(name))
-        values.put("mime_type", text("image/jpeg"))
-        values.put("relative_path", text("Pictures/\(album)"))
-        values.put("orientation", integers.valueOf(Int32(rotation)))
-        values.put("is_pending", integers.valueOf(1))
+        let values = try ContentValues(environment: environment)
+        try values.put("_display_name", text(name))
+        try values.put("mime_type", text("image/jpeg"))
+        try values.put("relative_path", text("Pictures/\(album)"))
+        try values.put("orientation", integers.valueOf(Int32(rotation)))
+        try values.put("is_pending", integers.valueOf(1))
         guard let uri = try resolver.insert(try imagesURI.boundToCurrentThread(), values) else {
             throw APhotoLibraryError.insertFailed
         }
@@ -176,14 +176,14 @@ public final class APhotoLibrary: @unchecked Sendable {
                 throw APhotoLibraryError.insertFailed
             }
             try writeAll(jpeg, fileDescriptor: file.detachFd())
-            let published = ContentValues(environment: environment)
-            published.put("is_pending", integers.valueOf(0))
+            let published = try ContentValues(environment: environment)
+            try published.put("is_pending", integers.valueOf(0))
             _ = try resolver.update(uri, published, nil, [])
         } catch {
             _ = try? resolver.delete(uri, nil, [])
             throw error
         }
-        guard let id = Int64(uri.getLastPathSegment()) else {
+        guard let id = Int64(try uri.getLastPathSegment()) else {
             throw APhotoLibraryError.insertFailed
         }
         return id
@@ -199,7 +199,7 @@ public final class APhotoLibrary: @unchecked Sendable {
 
     /// Up to `limit` rows of `columns`; closes the cursor.
     static func rows(from cursor: Cursor, limit: Int) throws -> [Row] {
-        defer { cursor.close() }
+        defer { try? cursor.close() }
         let id = try cursor.getColumnIndexOrThrow("_id")
         let name = try cursor.getColumnIndexOrThrow("_display_name")
         let width = try cursor.getColumnIndexOrThrow("width")
@@ -209,15 +209,15 @@ public final class APhotoLibrary: @unchecked Sendable {
         let mimeType = try cursor.getColumnIndexOrThrow("mime_type")
 
         var rows: [Row] = []
-        while rows.count < limit, cursor.moveToNext() {
+        while rows.count < limit, try cursor.moveToNext() {
             rows.append((
-                id: cursor.getLong(id),
-                name: cursor.getString(name),
-                width: Int(cursor.getInt(width)),
-                height: Int(cursor.getInt(height)),
-                rotation: Int(cursor.getInt(orientation)),
-                creationTime: cursor.isNull(taken) ? nil : cursor.getLong(taken),
-                mimeType: cursor.getString(mimeType)
+                id: try cursor.getLong(id),
+                name: try cursor.getString(name),
+                width: Int(try cursor.getInt(width)),
+                height: Int(try cursor.getInt(height)),
+                rotation: Int(try cursor.getInt(orientation)),
+                creationTime: try cursor.isNull(taken) ? nil : cursor.getLong(taken),
+                mimeType: try cursor.getString(mimeType)
             ))
         }
         return rows
@@ -310,12 +310,12 @@ public final class APhotoAsset: Identifiable, @unchecked Sendable {
         ) else {
             throw APhotoLibraryError.notFound(String(id))
         }
-        defer { bitmap.recycle() }
-        let stream = ByteArrayOutputStream(environment: environment)
-        guard bitmap.compress(try JavaClass<BitmapCompressFormat>(environment: environment).JPEG, 85, stream) else {
+        defer { try? bitmap.recycle() }
+        let stream = try ByteArrayOutputStream(environment: environment)
+        guard try bitmap.compress(try JavaClass<BitmapCompressFormat>(environment: environment).JPEG, 85, stream) else {
             throw APhotoLibraryError.encodingFailed
         }
-        let jpeg = stream.toByteArray()
+        let jpeg = try stream.toByteArray()
         try await AndroidMainThread.shared.run { _ in self.thumbnail = jpeg }
         return jpeg
     }
@@ -369,10 +369,10 @@ public enum APhotoLibraryError: Error, CustomStringConvertible {
 @JavaClass("org.nucleantui.android.photos.MediaObserver")
 class MediaObserver: ContentObserver {
     @JavaMethod
-    convenience init(_ handle: Int64, _ handler: Handler?, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, _ handler: Handler?, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 }
 
 @JavaImplementation("org.nucleantui.android.photos.MediaObserver")

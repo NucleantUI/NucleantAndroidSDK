@@ -21,7 +21,7 @@ import SwiftJava
 @JavaInterface("java.lang.Runnable")
 public struct Runnable {
     @JavaMethod
-    public func run()
+    public func run() throws
 }
 
 /// `java.util.concurrent.Executor`.
@@ -33,10 +33,10 @@ public struct Executor {}
 @JavaClass("java.util.ArrayList")
 open class JavaArrayList: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func add(_ element: JavaObject?) -> Bool
+    open func add(_ element: JavaObject?) throws -> Bool
 }
 
 /// `text` as the `java.lang.CharSequence` framework methods take.
@@ -50,27 +50,27 @@ public func charSequence(_ text: String, in environment: JNIEnvironment) -> Char
 @JavaClass("android.content.Context")
 open class Context: JavaObject {
     @JavaMethod
-    open func getApplicationContext() -> Context!
+    open func getApplicationContext() throws -> Context!
 
     /// `Object getSystemService(String)`; cast the result with `as(_:)`.
     @JavaMethod
-    open func getSystemService(_ name: String) -> JavaObject!
+    open func getSystemService(_ name: String) throws -> JavaObject!
 
     @JavaMethod
-    open func checkSelfPermission(_ permission: String) -> Int32
+    open func checkSelfPermission(_ permission: String) throws -> Int32
 
     @JavaMethod
-    open func getPackageName() -> String
+    open func getPackageName() throws -> String
 
     @JavaMethod
-    open func getPackageManager() -> PackageManager!
+    open func getPackageManager() throws -> PackageManager!
 
     @JavaMethod
-    open func getResources() -> Resources!
+    open func getResources() throws -> Resources!
 
     /// API 28.
     @JavaMethod
-    open func getMainExecutor() -> Executor!
+    open func getMainExecutor() throws -> Executor!
 
     /// `registerReceiver(BroadcastReceiver, IntentFilter, String, Handler, int)`, API 26.
     @JavaMethod
@@ -80,10 +80,10 @@ open class Context: JavaObject {
         _ broadcastPermission: JavaString?,
         _ scheduler: Handler?,
         _ flags: Int32
-    ) -> Intent!
+    ) throws -> Intent!
 
     @JavaMethod
-    open func unregisterReceiver(_ receiver: BroadcastReceiver?)
+    open func unregisterReceiver(_ receiver: BroadcastReceiver?) throws
 }
 
 extension Context {
@@ -95,65 +95,65 @@ extension Context {
 @JavaClass("android.content.Intent")
 open class Intent: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(_ action: String, environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(_ action: String, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func getAction() -> String
+    open func getAction() throws -> String
 
     @JavaMethod
-    open func getIntExtra(_ name: String, _ defaultValue: Int32) -> Int32
+    open func getIntExtra(_ name: String, _ defaultValue: Int32) throws -> Int32
 
     @JavaMethod
-    open func getBooleanExtra(_ name: String, _ defaultValue: Bool) -> Bool
+    open func getBooleanExtra(_ name: String, _ defaultValue: Bool) throws -> Bool
 
     @JavaMethod
-    open func getStringExtra(_ name: String) -> String
+    open func getStringExtra(_ name: String) throws -> String
 
     @JavaMethod
-    open func setType(_ type: String) -> Intent!
+    open func setType(_ type: String) throws -> Intent!
 
     @JavaMethod
-    open func putExtra(_ name: String, _ value: JavaString?) -> Intent!
+    open func putExtra(_ name: String, _ value: JavaString?) throws -> Intent!
 
     @JavaMethod
-    open func putExtra(_ name: String, _ value: Parcelable?) -> Intent!
+    open func putExtra(_ name: String, _ value: Parcelable?) throws -> Intent!
 
     @JavaMethod
-    open func putExtra(_ name: String, _ value: Int32) -> Intent!
+    open func putExtra(_ name: String, _ value: Int32) throws -> Intent!
 
     @JavaMethod
-    open func putExtra(_ name: String, _ value: [String]) -> Intent!
+    open func putExtra(_ name: String, _ value: [String]) throws -> Intent!
 
     @JavaMethod
-    open func addFlags(_ flags: Int32) -> Intent!
+    open func addFlags(_ flags: Int32) throws -> Intent!
 
     @JavaMethod
-    open func addCategory(_ category: String) -> Intent!
+    open func addCategory(_ category: String) throws -> Intent!
 
     @JavaMethod
-    open func hasExtra(_ name: String) -> Bool
+    open func hasExtra(_ name: String) throws -> Bool
 
     @JavaMethod
-    open func removeExtra(_ name: String)
+    open func removeExtra(_ name: String) throws
 
     /// The URI an answering app sent back (a picked document, for one).
     @JavaMethod
-    open func getData() -> Uri!
+    open func getData() throws -> Uri!
 }
 
 extension JavaClass<Intent> {
     @JavaStaticMethod
-    public func createChooser(_ target: Intent?, _ title: CharSequence?) -> Intent!
+    public func createChooser(_ target: Intent?, _ title: CharSequence?) throws -> Intent!
 }
 
 /// `android.content.IntentFilter`.
 @JavaClass("android.content.IntentFilter")
 open class IntentFilter: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(_ action: String, environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(_ action: String, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func addAction(_ action: String)
+    open func addAction(_ action: String) throws
 }
 
 /// `android.content.BroadcastReceiver`.
@@ -164,17 +164,17 @@ open class BroadcastReceiver: JavaObject {}
 @JavaClass("android.content.pm.PackageManager")
 open class PackageManager: JavaObject {
     @JavaMethod
-    open func getLaunchIntentForPackage(_ packageName: String) -> Intent!
+    open func getLaunchIntentForPackage(_ packageName: String) throws -> Intent!
 
     @JavaMethod
-    open func hasSystemFeature(_ name: String) -> Bool
+    open func hasSystemFeature(_ name: String) throws -> Bool
 }
 
 /// `android.content.res.Resources`.
 @JavaClass("android.content.res.Resources")
 open class Resources: JavaObject {
     @JavaMethod
-    open func getDisplayMetrics() -> DisplayMetrics!
+    open func getDisplayMetrics() throws -> DisplayMetrics!
 }
 
 // MARK: - android.app
@@ -183,20 +183,20 @@ open class Resources: JavaObject {
 @JavaClass("android.app.Activity")
 open class Activity: Context {
     @JavaMethod
-    open func requestPermissions(_ permissions: [String], _ requestCode: Int32)
+    open func requestPermissions(_ permissions: [String], _ requestCode: Int32) throws
 
     @JavaMethod
-    open func startActivity(_ intent: Intent?)
+    open func startActivity(_ intent: Intent?) throws
 
     @JavaMethod
     open func startActivityForResult(_ intent: Intent?, _ requestCode: Int32) throws
 
     /// The intent that started (or, after `setIntent`, last brought back) the Activity.
     @JavaMethod
-    open func getIntent() -> Intent!
+    open func getIntent() throws -> Intent!
 
     @JavaMethod
-    open func getWindow() -> Window!
+    open func getWindow() throws -> Window!
 }
 
 // MARK: - android.view
@@ -205,16 +205,16 @@ open class Activity: Context {
 @JavaClass("android.view.Window")
 open class Window: JavaObject {
     @JavaMethod
-    open func addFlags(_ flags: Int32)
+    open func addFlags(_ flags: Int32) throws
 
     @JavaMethod
-    open func clearFlags(_ flags: Int32)
+    open func clearFlags(_ flags: Int32) throws
 
     @JavaMethod
-    open func getAttributes() -> WindowLayoutParams!
+    open func getAttributes() throws -> WindowLayoutParams!
 
     @JavaMethod
-    open func setAttributes(_ attributes: WindowLayoutParams?)
+    open func setAttributes(_ attributes: WindowLayoutParams?) throws
 }
 
 /// `android.view.WindowManager.LayoutParams`.
@@ -238,7 +238,7 @@ extension WindowLayoutParams {
 @JavaClass("android.net.Uri", implements: Parcelable.self)
 open class Uri: JavaObject {
     @JavaMethod
-    open func getLastPathSegment() -> String
+    open func getLastPathSegment() throws -> String
 }
 
 // MARK: - android.os
@@ -267,35 +267,35 @@ extension JavaClass<BuildVersion> {
 @JavaClass("android.os.Looper")
 open class Looper: JavaObject {
     @JavaMethod
-    open func isCurrentThread() -> Bool
+    open func isCurrentThread() throws -> Bool
 }
 
 extension JavaClass<Looper> {
     @JavaStaticMethod
-    public func getMainLooper() -> Looper!
+    public func getMainLooper() throws -> Looper!
 }
 
 /// `android.os.Handler`.
 @JavaClass("android.os.Handler")
 open class Handler: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(_ looper: Looper?, environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(_ looper: Looper?, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func post(_ runnable: Runnable?) -> Bool
+    open func post(_ runnable: Runnable?) throws -> Bool
 
     @JavaMethod
-    open func postDelayed(_ runnable: Runnable?, _ delayMillis: Int64) -> Bool
+    open func postDelayed(_ runnable: Runnable?, _ delayMillis: Int64) throws -> Bool
 }
 
 /// `android.os.CancellationSignal`.
 @JavaClass("android.os.CancellationSignal")
 open class CancellationSignal: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func cancel()
+    open func cancel() throws
 }
 
 // MARK: - android.util
@@ -304,13 +304,13 @@ open class CancellationSignal: JavaObject {
 @JavaClass("android.util.Size")
 open class Size: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(_ width: Int32, _ height: Int32, environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(_ width: Int32, _ height: Int32, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func getWidth() -> Int32
+    open func getWidth() throws -> Int32
 
     @JavaMethod
-    open func getHeight() -> Int32
+    open func getHeight() throws -> Int32
 }
 
 /// `android.util.DisplayMetrics`.
@@ -336,5 +336,5 @@ open class DisplayMetrics: JavaObject {
 @JavaClass("org.nucleantui.android.NativeRunnable", implements: Runnable.self)
 open class NativeRunnable: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(_ handle: Int64, environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(_ handle: Int64, environment: JNIEnvironment? = nil) throws
 }

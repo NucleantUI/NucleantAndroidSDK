@@ -45,12 +45,12 @@ public final class LabVibrator: @unchecked Sendable {
     }
 
     /// 1 tuned for this device, 0 approximated, -1 unknown.
-    public func effectSupport(name: String) -> Int32 {
+    public func effectSupport(name: String) throws -> Int32 {
         guard let effect = AHapticEffect.allCases.first(where: { Self.name($0) == name }) else { return -1 }
-        return vibrator.supports(effect).map { $0 ? 1 : 0 } ?? -1
+        return try vibrator.supports(effect).map { $0 ? 1 : 0 } ?? -1
     }
 
-    public func cancel() { vibrator.cancel() }
+    public func cancel() throws { try vibrator.cancel() }
 
     /// "tap", "longPress", "contextClick", "tick", "success", "error", "gestureStart", …
     public var feedbackNames: [String] { AHapticFeedback.allCases.map { "\($0)" } }
@@ -146,7 +146,7 @@ public final class LabSensor: @unchecked Sendable {
     public var needsPermission: Bool { sensor.permission != nil }
     public var isAuthorized: Bool { (try? sensor.isAuthorized()) ?? false }
     public func requestAccess() async throws -> Bool { try await sensor.requestAuthorization() }
-    public func stop() { sensor.stop() }
+    public func stop() throws { try sensor.stop() }
 
     /// `listener` is a `java.lang.Runnable`, run on the main thread after each change.
     public func observe(listener: JavaObject) {

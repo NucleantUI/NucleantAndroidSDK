@@ -43,8 +43,8 @@ public func activityResult(requestCode: Int32, resultCode: Int32, data: JavaObje
 }
 
 /// `Activity.onNewIntent`, after `setIntent`.
-public func newIntent(intent: JavaObject) {
-    AndroidContext.shared.handleNewIntent(intent)
+public func newIntent(intent: JavaObject) throws {
+    try AndroidContext.shared.handleNewIntent(intent)
 }
 
 /// `Activity.onRequestPermissionsResult`. False for a request Swift did not make.
@@ -94,7 +94,7 @@ final class ChangeObserver: @unchecked Sendable {
             // by the time this runs on the main thread, it has.
             try? AndroidMainThread.shared.post { environment in
                 guard generation == self.generation else { return }
-                callbacks.listener.wrapped(as: Runnable.self, in: environment).run()
+                try callbacks.listener.wrapped(as: Runnable.self, in: environment).run()
                 self.track(callbacks, generation: generation)
             }
         }

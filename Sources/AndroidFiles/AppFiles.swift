@@ -55,38 +55,38 @@ public final class AAppFiles: @unchecked Sendable {
             throw AndroidError.serviceUnavailable("files directory")
         }
         self.root = root
-        directory = root.getAbsolutePath()
+        directory = try root.getAbsolutePath()
         try refresh()
     }
 
     public func refresh() throws {
         var listed: [AFileEntry] = []
-        for file in root.listFiles().compactMap({ $0 }) {
-            let isDirectory = file.isDirectory()
+        for file in try root.listFiles().compactMap({ $0 }) {
+            let isDirectory = try file.isDirectory()
             listed.append(AFileEntry(
-                path: file.getName(),
-                name: file.getName(),
-                size: isDirectory ? Self.size(of: file) : file.length(),
+                path: try file.getName(),
+                name: try file.getName(),
+                size: try isDirectory ? Self.size(of: file) : file.length(),
                 isDirectory: isDirectory,
-                modified: file.lastModified()
+                modified: try file.lastModified()
             ))
         }
         entries = listed.sorted { ($0.isDirectory ? 0 : 1, $0.name) < ($1.isDirectory ? 0 : 1, $1.name) }
-        usedBytes = Self.size(of: root)
-        availableBytes = root.getUsableSpace()
+        usedBytes = try Self.size(of: root)
+        availableBytes = try root.getUsableSpace()
     }
 
     /// What is in the subdirectory at `path`.
     public func entries(in path: String) throws -> [AFileEntry] {
         let directory = try file(at: path)
-        return directory.listFiles().compactMap { $0 }.map { file in
-            let isDirectory = file.isDirectory()
+        return try directory.listFiles().compactMap { $0 }.map { file in
+            let isDirectory = try file.isDirectory()
             return AFileEntry(
-                path: path + "/" + file.getName(),
-                name: file.getName(),
-                size: isDirectory ? Self.size(of: file) : file.length(),
+                path: path + "/" + (try file.getName()),
+                name: try file.getName(),
+                size: try isDirectory ? Self.size(of: file) : file.length(),
                 isDirectory: isDirectory,
-                modified: file.lastModified()
+                modified: try file.lastModified()
             )
         }
     }
@@ -95,7 +95,7 @@ public final class AAppFiles: @unchecked Sendable {
     /// directories on the way.
     public func write(_ bytes: [UInt8], to path: String) throws {
         let file = try file(at: path)
-        _ = file.getParentFile()?.mkdirs()
+        _ = try file.getParentFile()?.mkdirs()
         let environment = try JavaVirtualMachine.shared().environment()
         let stream = try FileOutputStream(file, false, environment: environment)
         do {
@@ -110,7 +110,7 @@ public final class AAppFiles: @unchecked Sendable {
 
     public func read(_ path: String) throws -> [UInt8] {
         let file = try file(at: path)
-        guard file.exists(), !file.isDirectory() else {
+        guard try file.exists(), !(try file.isDirectory()) else {
             throw AFilesError.notFound(path)
         }
         let environment = try JavaVirtualMachine.shared().environment()
@@ -124,10 +124,10 @@ public final class AAppFiles: @unchecked Sendable {
     /// Delete the file, or the directory and everything in it.
     public func delete(_ path: String) throws {
         let file = try file(at: path)
-        guard file.exists() else {
+        guard try file.exists() else {
             throw AFilesError.notFound(path)
         }
-        guard Self.delete(file) else {
+        guard try Self.delete(file) else {
             throw AFilesError.deleteFailed(path)
         }
         try refresh()
@@ -140,7 +140,7 @@ public final class AAppFiles: @unchecked Sendable {
             throw AFilesError.invalidPath(path)
         }
         let environment = try JavaVirtualMachine.shared().environment()
-        return File(root, path, environment: environment)
+        return try File(root, path, environment: environment)
     }
 
     /// Relative, non-empty, and staying inside the directory.
@@ -149,18 +149,18 @@ public final class AAppFiles: @unchecked Sendable {
         return !path.isEmpty && !path.hasPrefix("/") && !parts.contains { $0 == ".." || $0 == "." || $0.isEmpty }
     }
 
-    private static func size(of file: File) -> Int64 {
-        guard file.isDirectory() else { return file.length() }
-        return file.listFiles().compactMap { $0 }.reduce(0) { $0 + size(of: $1) }
+    private static func size(of file: File) throws -> Int64 {
+        guard try file.isDirectory() else { return try file.length() }
+        return try file.listFiles().compactMap { $0 }.reduce(0) { $0 + (try size(of: $1)) }
     }
 
-    private static func delete(_ file: File) -> Bool {
-        if file.isDirectory() {
-            for child in file.listFiles().compactMap({ $0 }) where !delete(child) {
+    private static func delete(_ file: File) throws -> Bool {
+        if try file.isDirectory() {
+            for child in try file.listFiles().compactMap({ $0 }) where !(try delete(child)) {
                 return false
             }
         }
-        return file.delete()
+        return try file.delete()
     }
 }
 
@@ -182,27 +182,27 @@ public enum AFilesError: Error, CustomStringConvertible {
 
 extension Context {
     @JavaMethod
-    public func getFilesDir() -> File!
+    public func getFilesDir() throws -> File!
 }
 
 /// `java.io.File`.
 @JavaClass("java.io.File")
 open class File: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(_ parent: File?, _ child: String, environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(_ parent: File?, _ child: String, environment: JNIEnvironment? = nil) throws
 
-    @JavaMethod open func getName() -> String
-    @JavaMethod open func getAbsolutePath() -> String
-    @JavaMethod open func getParentFile() -> File!
-    @JavaMethod open func exists() -> Bool
-    @JavaMethod open func isDirectory() -> Bool
-    @JavaMethod open func length() -> Int64
-    @JavaMethod open func lastModified() -> Int64
-    @JavaMethod open func listFiles() -> [File?]
-    @JavaMethod open func mkdirs() -> Bool
-    @JavaMethod open func delete() -> Bool
-    @JavaMethod open func getUsableSpace() -> Int64
-    @JavaMethod open func toPath() -> JavaPath!
+    @JavaMethod open func getName() throws -> String
+    @JavaMethod open func getAbsolutePath() throws -> String
+    @JavaMethod open func getParentFile() throws -> File!
+    @JavaMethod open func exists() throws -> Bool
+    @JavaMethod open func isDirectory() throws -> Bool
+    @JavaMethod open func length() throws -> Int64
+    @JavaMethod open func lastModified() throws -> Int64
+    @JavaMethod open func listFiles() throws -> [File?]
+    @JavaMethod open func mkdirs() throws -> Bool
+    @JavaMethod open func delete() throws -> Bool
+    @JavaMethod open func getUsableSpace() throws -> Int64
+    @JavaMethod open func toPath() throws -> JavaPath!
 }
 
 /// `java.nio.file.Path`.

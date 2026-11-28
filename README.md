@@ -97,8 +97,33 @@ main thread, so a late callback never reaches freed memory.
 `NativeMethodBindingTests` checks that every `native` in `Android/java` has
 its Swift symbol.
 
-An app compiles `Android/java` together with its own Java and declares the
-permissions it uses. The Device Lab manifest has the full list.
+**Errors.** Every Java call under the API is `throws`, and so is every API
+that makes one. A Java exception comes back to the caller as the error,
+swift-java's `Throwable`, whose description is the exception itself. A
+missing manifest permission, for one, reads `java.lang.SecurityException:
+Must have USE_BIOMETRIC permission: …`. Nothing traps. When Android calls
+in, the error goes to what is waiting: `authenticate`, `takePhoto` and
+`requestFix` throw it. A callback that only updates state, such as a battery
+broadcast or a clipboard change, throws it back into the Java that called
+Swift, as the original exception. Teardown, in `deinit` or closing a cursor,
+is best-effort.
+
+An app compiles `Android/java` together with its own Java, and declares in
+its manifest the permissions of the targets it uses. Without them, the call
+that needs one throws Android's `SecurityException`.
+
+| Target | Manifest permissions |
+|---|---|
+| `AndroidBiometrics` | `USE_BIOMETRIC` |
+| `AndroidCamera` | `CAMERA`, also granted at run time (`requestAccess()`) |
+| `AndroidPhotos` | `READ_MEDIA_IMAGES` and `READ_MEDIA_VISUAL_USER_SELECTED` (Android 14+), `READ_MEDIA_IMAGES` (13), `READ_EXTERNAL_STORAGE` (12 and older), granted at run time; `CAMERA` for `captureWithCameraApp` |
+| `AndroidHaptics` | `VIBRATE` |
+| `AndroidLocation` | `ACCESS_FINE_LOCATION` and/or `ACCESS_COARSE_LOCATION`, granted at run time |
+| `AndroidNetwork` | `ACCESS_NETWORK_STATE` |
+| `AndroidNotifications` | `POST_NOTIFICATIONS` (Android 13+), granted at run time |
+| `AndroidSensors` | `ACTIVITY_RECOGNITION` for the step sensors, granted at run time |
+
+The other targets need none. The Device Lab manifest declares them all.
 
 ## Device Lab
 
@@ -141,4 +166,7 @@ ANDROID_NDK_HOME=<android-sdk>/ndk/27.3.13750724 \
 The whole package also builds on the host, because swift-java only looks Java
 classes up at run time. `swift build` and `swift test` work on macOS, and so
 does the editor's LSP. Calling the APIs only means something inside an Android
-process.
+process. The exception: `JavaExceptionTests` start a JVM in the test process,
+with stand-ins for the few Android classes they drive compiled by the JDK's
+`javac`, and check that a Java exception reaches the Swift caller as an
+error. They need a JDK (`JAVA_HOME`) and are skipped without one.
