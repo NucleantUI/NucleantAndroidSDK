@@ -13,7 +13,7 @@ import org.swift.swiftkit.core.SwiftArena
 import java.util.Optional
 
 /**
- * Device Lab: what NucleantAndroid's Swift capability targets can do on this
+ * Device Lab: what NucleantAndroidSDK's Swift capability targets can do on this
  * device — one card per target.
  *
  * Everything below the views is Swift, reached through DeviceLabBridge

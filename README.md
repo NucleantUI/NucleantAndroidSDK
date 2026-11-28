@@ -1,4 +1,4 @@
-# NucleantAndroid
+# NucleantAndroidSDK
 
 The Android SDK in Swift, through [swift-java](https://github.com/swiftlang/swift-java)
 0.4.2 (the version NucleantApplication uses). Each capability has its own

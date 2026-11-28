@@ -2,7 +2,7 @@
 //  AndroidContext.swift
 //  AndroidCore
 //
-//  The Android app NucleantAndroid's capabilities run in.
+//  The Android app NucleantAndroidSDK's capabilities run in.
 //
 //  The capability types (AFlashlight, ACameras, APhotoLibrary, …) create
 //  themselves without being handed a `Context` or an `Activity`. What they need
@@ -40,7 +40,7 @@ public final class AndroidContext: Sendable {
         let continuation: CheckedContinuation<[String: Bool], any Error>
     }
 
-    /// Request codes NucleantAndroid passes to `requestPermissions`. Android
+    /// Request codes NucleantAndroidSDK passes to `requestPermissions`. Android
     /// only keeps the low 16 bits, and the host may use codes of its own, so
     /// these stay in one recognisable block ("NA" = 0x4E41) and wrap within it.
     static let firstRequestCode: Int32 = 0x4E41
@@ -160,7 +160,7 @@ public final class AndroidContext: Sendable {
 
     /// `Activity.onRequestPermissionsResult`, forwarded by the host.
     ///
-    /// Returns false for a request NucleantAndroid did not make, so the host
+    /// Returns false for a request NucleantAndroidSDK did not make, so the host
     /// knows to handle it itself.
     @discardableResult
     public func handlePermissionsResult(
@@ -219,7 +219,7 @@ public final class AndroidContext: Sendable {
     }
 
     /// `Activity.onActivityResult`, forwarded by the host. Returns false for a
-    /// request NucleantAndroid did not make.
+    /// request NucleantAndroidSDK did not make.
     @discardableResult
     public func handleActivityResult(requestCode: Int32, resultCode: Int32, data: JavaObject?) -> Bool {
         guard let continuation = state.withLock({ $0.pendingResults.removeValue(forKey: requestCode) }) else {
@@ -272,7 +272,7 @@ public final class AndroidActivityResult: Sendable {
     }
 }
 
-/// `android.content.pm.PackageManager` values NucleantAndroid compares against.
+/// `android.content.pm.PackageManager` values NucleantAndroidSDK compares against.
 enum PackageManagerConstants {
     static let permissionGranted: Int32 = 0
 }

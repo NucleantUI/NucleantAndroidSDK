@@ -13,7 +13,7 @@ Steps, each skipped when already done:
    3D scene, the front one a moving test pattern. (Emulators have no flash.)
 2. The emulator booted, unless a device is already connected.
 3. `./gradlew :app:installDebug` for the device's ABI only — Gradle
-   cross-compiles NucleantAndroid's DeviceLabBridge with the Swift Android SDK.
+   cross-compiles NucleantAndroidSDK's DeviceLabBridge with the Swift Android SDK.
 4. The app launched.
 
 Needs the Android SDK (ANDROID_HOME, ANDROID_SDK_ROOT, ~/.kivyschool/android-sdk
