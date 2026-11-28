@@ -46,7 +46,7 @@ open class ContentResolver: JavaObject {
 
     /// The MIME type of `uri`, or "" when unknown.
     @JavaMethod
-    open func getType(_ uri: Uri?) -> String
+    open func getType(_ uri: Uri?) throws -> String
 
     /// API 29.
     @JavaMethod
@@ -55,20 +55,20 @@ open class ContentResolver: JavaObject {
 
 extension Context {
     @JavaMethod
-    public func getContentResolver() -> ContentResolver!
+    public func getContentResolver() throws -> ContentResolver!
 }
 
 /// `android.content.ContentValues`.
 @JavaClass("android.content.ContentValues")
 open class ContentValues: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func put(_ key: String, _ value: JavaString?)
+    open func put(_ key: String, _ value: JavaString?) throws
 
     @JavaMethod
-    open func put(_ key: String, _ value: JavaInteger?)
+    open func put(_ key: String, _ value: JavaInteger?) throws
 }
 
 /// `android.content.ContentUris`.
@@ -77,7 +77,7 @@ open class ContentUris: JavaObject {}
 
 extension JavaClass<ContentUris> {
     @JavaStaticMethod
-    public func withAppendedId(_ contentUri: Uri?, _ id: Int64) -> Uri!
+    public func withAppendedId(_ contentUri: Uri?, _ id: Int64) throws -> Uri!
 }
 
 // MARK: - android.database
@@ -90,26 +90,26 @@ open class ContentObserver: JavaObject {}
 @JavaInterface("android.database.Cursor")
 public struct Cursor {
     @JavaMethod
-    public func moveToNext() -> Bool
+    public func moveToNext() throws -> Bool
 
     @JavaMethod
     public func getColumnIndexOrThrow(_ columnName: String) throws -> Int32
 
     @JavaMethod
-    public func getLong(_ columnIndex: Int32) -> Int64
+    public func getLong(_ columnIndex: Int32) throws -> Int64
 
     @JavaMethod
-    public func getInt(_ columnIndex: Int32) -> Int32
+    public func getInt(_ columnIndex: Int32) throws -> Int32
 
     /// Null comes back as "".
     @JavaMethod
-    public func getString(_ columnIndex: Int32) -> String
+    public func getString(_ columnIndex: Int32) throws -> String
 
     @JavaMethod
-    public func isNull(_ columnIndex: Int32) -> Bool
+    public func isNull(_ columnIndex: Int32) throws -> Bool
 
     @JavaMethod
-    public func close()
+    public func close() throws
 }
 
 // MARK: - android.provider
@@ -130,7 +130,7 @@ extension JavaClass<MediaStoreImagesMedia> {
 open class ParcelFileDescriptor: JavaObject {
     /// Take the file descriptor over: closing it becomes the caller's job.
     @JavaMethod
-    open func detachFd() -> Int32
+    open func detachFd() throws -> Int32
 }
 
 // MARK: - android.graphics
@@ -139,22 +139,22 @@ open class ParcelFileDescriptor: JavaObject {
 @JavaClass("android.graphics.Bitmap")
 open class Bitmap: JavaObject {
     @JavaMethod
-    open func compress(_ format: BitmapCompressFormat?, _ quality: Int32, _ stream: OutputStream?) -> Bool
+    open func compress(_ format: BitmapCompressFormat?, _ quality: Int32, _ stream: OutputStream?) throws -> Bool
 
     @JavaMethod
-    open func recycle()
+    open func recycle() throws
 
     @JavaMethod
-    open func getWidth() -> Int32
+    open func getWidth() throws -> Int32
 
     @JavaMethod
-    open func getHeight() -> Int32
+    open func getHeight() throws -> Int32
 
     @JavaMethod
-    open func getRowBytes() -> Int32
+    open func getRowBytes() throws -> Int32
 
     @JavaMethod
-    open func getByteCount() -> Int32
+    open func getByteCount() throws -> Int32
 
     @JavaMethod
     open func copyPixelsToBuffer(_ destination: JavaNioBufferObject?) throws
@@ -186,8 +186,8 @@ open class OutputStream: JavaObject {}
 @JavaClass("java.io.ByteArrayOutputStream")
 open class ByteArrayOutputStream: OutputStream {
     @JavaMethod
-    @_nonoverride public convenience init(environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func toByteArray() -> [UInt8]
+    open func toByteArray() throws -> [UInt8]
 }

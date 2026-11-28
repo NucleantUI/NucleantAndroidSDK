@@ -37,15 +37,15 @@ public final class AVibrator: @unchecked Sendable {
         let environment = try JavaVirtualMachine.shared().environment()
         let context = try AndroidContext.shared.applicationContext(in: environment)
         sdkLevel = try AndroidContext.shared.sdkLevel(in: environment)
-        let found: Vibrator? = sdkLevel >= 31
+        let found: Vibrator? = try sdkLevel >= 31
             ? context.getSystemService("vibrator_manager")?.as(VibratorManager.self)?.getDefaultVibrator()
             : context.getSystemService("vibrator")?.as(Vibrator.self)
         guard let found else {
             throw AndroidError.serviceUnavailable("vibrator")
         }
         vibrator = found
-        hasVibrator = found.hasVibrator()
-        hasAmplitudeControl = found.hasAmplitudeControl()
+        hasVibrator = try found.hasVibrator()
+        hasAmplitudeControl = try found.hasAmplitudeControl()
     }
 
     /// Vibrate for `milliseconds` at `intensity` (0...1; only matters with
@@ -73,9 +73,9 @@ public final class AVibrator: @unchecked Sendable {
 
     /// Whether the device has a tuned implementation of `effect` (Android 11+;
     /// nil when it cannot tell). Without one, Android plays an approximation.
-    public func supports(_ effect: AHapticEffect) -> Bool? {
+    public func supports(_ effect: AHapticEffect) throws -> Bool? {
         guard sdkLevel >= 30 else { return nil }
-        switch vibrator.areEffectsSupported([effect.rawValue]).first {
+        switch try vibrator.areEffectsSupported([effect.rawValue]).first {
         case 1: return true
         case 2: return false
         default: return nil
@@ -83,8 +83,8 @@ public final class AVibrator: @unchecked Sendable {
     }
 
     /// Stop whatever is vibrating.
-    public func cancel() {
-        vibrator.cancel()
+    public func cancel() throws {
+        try vibrator.cancel()
     }
 
     private func amplitude(_ intensity: Double) -> Int32 {
@@ -103,27 +103,27 @@ public final class AVibrator: @unchecked Sendable {
 @JavaClass("android.os.Vibrator")
 open class Vibrator: JavaObject {
     @JavaMethod
-    open func hasVibrator() -> Bool
+    open func hasVibrator() throws -> Bool
 
     @JavaMethod
-    open func hasAmplitudeControl() -> Bool
+    open func hasAmplitudeControl() throws -> Bool
 
     @JavaMethod
     open func vibrate(_ effect: VibrationEffect?) throws
 
     /// API 30. `VIBRATION_EFFECT_SUPPORT_*` per effect.
     @JavaMethod
-    open func areEffectsSupported(_ effectIds: [Int32]) -> [Int32]
+    open func areEffectsSupported(_ effectIds: [Int32]) throws -> [Int32]
 
     @JavaMethod
-    open func cancel()
+    open func cancel() throws
 }
 
 /// `android.os.VibratorManager`, API 31.
 @JavaClass("android.os.VibratorManager")
 open class VibratorManager: JavaObject {
     @JavaMethod
-    open func getDefaultVibrator() -> Vibrator!
+    open func getDefaultVibrator() throws -> Vibrator!
 }
 
 /// `android.os.VibrationEffect`.
@@ -132,12 +132,12 @@ open class VibrationEffect: JavaObject {}
 
 extension JavaClass<VibrationEffect> {
     @JavaStaticMethod
-    public func createOneShot(_ milliseconds: Int64, _ amplitude: Int32) -> VibrationEffect!
+    public func createOneShot(_ milliseconds: Int64, _ amplitude: Int32) throws -> VibrationEffect!
 
     @JavaStaticMethod
     public func createWaveform(_ timings: [Int64], _ amplitudes: [Int32], _ repeatIndex: Int32) throws -> VibrationEffect!
 
     /// API 29.
     @JavaStaticMethod
-    public func createPredefined(_ effectId: Int32) -> VibrationEffect!
+    public func createPredefined(_ effectId: Int32) throws -> VibrationEffect!
 }

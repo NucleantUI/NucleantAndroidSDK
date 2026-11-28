@@ -32,7 +32,7 @@ public final class AndroidContext: Sendable {
         var pendingRequests: [Int32: PendingPermissionRequest] = [:]
         var nextResultCode: Int32 = AndroidContext.firstResultCode
         var pendingResults: [Int32: CheckedContinuation<AndroidActivityResult, any Error>] = [:]
-        var intentHandlers: [@Sendable (Intent) -> Bool] = []
+        var intentHandlers: [@Sendable (Intent) throws -> Bool] = []
     }
 
     private struct PendingPermissionRequest {
@@ -86,7 +86,7 @@ public final class AndroidContext: Sendable {
     /// to keep system services from.
     public func applicationContext(in environment: JNIEnvironment) throws -> Context {
         let activity = try activity(in: environment)
-        guard let context = activity.getApplicationContext() else {
+        guard let context = try activity.getApplicationContext() else {
             throw AndroidError.noActivity
         }
         return context
@@ -237,20 +237,38 @@ public final class AndroidContext: Sendable {
     // MARK: - New intents
 
     /// Hand every intent the host forwards to `handler`, on the main thread,
-    /// for as long as it returns true.
-    public func addIntentHandler(_ handler: @escaping @Sendable (Intent) -> Bool) {
+    /// for as long as it returns true. What it throws, `handleNewIntent`
+    /// throws to the host.
+    public func addIntentHandler(_ handler: @escaping @Sendable (Intent) throws -> Bool) {
         state.withLock { $0.intentHandlers.append(handler) }
     }
 
     /// `Activity.onNewIntent`, forwarded by the host (after `setIntent`): the
     /// app was brought back by an intent — a tapped notification, for one.
-    public func handleNewIntent(_ intent: JavaObject) {
+    ///
+    /// Every handler sees the intent; a handler that throws is kept, and the
+    /// first error is thrown once they all have run.
+    public func handleNewIntent(_ intent: JavaObject) throws {
         let intent = Intent(javaThis: intent.javaThis, environment: intent.javaEnvironment)
         let handlers = state.withLock { $0.intentHandlers }
-        let kept = handlers.filter { $0(intent) }
+        var kept: [@Sendable (Intent) throws -> Bool] = []
+        var failure: (any Error)?
+        for handler in handlers {
+            do {
+                if try handler(intent) {
+                    kept.append(handler)
+                }
+            } catch {
+                kept.append(handler)
+                failure = failure ?? error
+            }
+        }
         state.withLock { state in
             // Keep the ones that said so, and any added while they ran.
             state.intentHandlers = kept + state.intentHandlers.dropFirst(handlers.count)
+        }
+        if let failure {
+            throw failure
         }
     }
 }

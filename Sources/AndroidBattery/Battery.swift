@@ -78,21 +78,21 @@ public final class ABattery: @unchecked Sendable {
         let environment = try JavaVirtualMachine.shared().environment()
         let context = try AndroidContext.shared.applicationContext(in: environment)
         self.context = context
-        self.powerManager = context.getSystemService("power")?.as(PowerManager.self)
-        isPowerSaveMode = powerManager?.isPowerSaveMode() ?? false
+        self.powerManager = try context.getSystemService("power")?.as(PowerManager.self)
+        isPowerSaveMode = try powerManager?.isPowerSaveMode() ?? false
 
         let handle = NativeHandle.retain(self)
-        let receiver = BatteryReceiver(handle, environment: environment)
+        let receiver = try BatteryReceiver(handle, environment: environment)
         self.handle = handle
         self.receiver = receiver
-        let filter = IntentFilter(Self.batteryChanged, environment: environment)
-        filter.addAction(Self.powerSaveModeChanged)
+        let filter = try IntentFilter(Self.batteryChanged, environment: environment)
+        try filter.addAction(Self.powerSaveModeChanged)
         let flags = try AndroidContext.shared.sdkLevel(in: environment) >= 33 ? Context.receiverNotExported : 0
         // BATTERY_CHANGED is sticky: registering returns the latest one at once.
-        let latest = context.registerReceiver(
+        let latest = try context.registerReceiver(
             receiver, filter, nil, try AndroidMainThread.shared.mainHandler(in: environment), flags)
         if let latest {
-            update(from: latest)
+            try update(from: latest)
         }
     }
 
@@ -103,31 +103,31 @@ public final class ABattery: @unchecked Sendable {
         let handle = self.handle
         try? AndroidMainThread.shared.post { environment in
             let receiver = batteryReceiver.wrapped(as: BatteryReceiver.self, in: environment)
-            receiver.disarm()
-            context.wrapped(as: Context.self, in: environment).unregisterReceiver(receiver)
+            try? receiver.disarm()
+            try? context.wrapped(as: Context.self, in: environment).unregisterReceiver(receiver)
             NativeHandle<ABattery>.release(handle)
         }
     }
 
-    func received(_ intent: Intent) {
-        if intent.getAction() == Self.powerSaveModeChanged {
-            isPowerSaveMode = powerManager?.isPowerSaveMode() ?? false
+    func received(_ intent: Intent) throws {
+        if try intent.getAction() == Self.powerSaveModeChanged {
+            isPowerSaveMode = try powerManager?.isPowerSaveMode() ?? false
         } else {
-            update(from: intent)
+            try update(from: intent)
         }
     }
 
     /// From a BATTERY_CHANGED intent's extras (`BatteryManager.EXTRA_*`).
-    private func update(from intent: Intent) {
-        level = Self.level(raw: intent.getIntExtra("level", -1), scale: intent.getIntExtra("scale", -1))
-        state = ABatteryState(rawValue: intent.getIntExtra("status", 1)) ?? .unknown
-        powerSource = APowerSource(rawValue: intent.getIntExtra("plugged", 0)) ?? .battery
-        health = ABatteryHealth(rawValue: intent.getIntExtra("health", 1)) ?? .unknown
-        let tenthsOfDegree = intent.getIntExtra("temperature", Int32.min)
+    private func update(from intent: Intent) throws {
+        level = Self.level(raw: try intent.getIntExtra("level", -1), scale: try intent.getIntExtra("scale", -1))
+        state = ABatteryState(rawValue: try intent.getIntExtra("status", 1)) ?? .unknown
+        powerSource = APowerSource(rawValue: try intent.getIntExtra("plugged", 0)) ?? .battery
+        health = ABatteryHealth(rawValue: try intent.getIntExtra("health", 1)) ?? .unknown
+        let tenthsOfDegree = try intent.getIntExtra("temperature", Int32.min)
         temperature = tenthsOfDegree == Int32.min ? nil : Double(tenthsOfDegree) / 10
-        let millivolts = intent.getIntExtra("voltage", -1)
+        let millivolts = try intent.getIntExtra("voltage", -1)
         voltage = millivolts <= 0 ? nil : Double(millivolts) / 1000
-        technology = intent.getStringExtra("technology")
+        technology = try intent.getStringExtra("technology")
     }
 
     /// `level / scale`, or nil when either is missing.
@@ -143,7 +143,7 @@ public final class ABattery: @unchecked Sendable {
 @JavaClass("android.os.PowerManager")
 open class PowerManager: JavaObject {
     @JavaMethod
-    open func isPowerSaveMode() -> Bool
+    open func isPowerSaveMode() throws -> Bool
 }
 
 // MARK: - BatteryReceiver (Android/java)
@@ -151,17 +151,17 @@ open class PowerManager: JavaObject {
 @JavaClass("org.nucleantui.android.battery.BatteryReceiver")
 class BatteryReceiver: BroadcastReceiver {
     @JavaMethod
-    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 }
 
 @JavaImplementation("org.nucleantui.android.battery.BatteryReceiver")
 extension BatteryReceiver {
     @JavaMethod
-    static func nativeOnReceive(_ handle: Int64, _ intent: Intent?, environment: JNIEnvironment) {
+    static func nativeOnReceive(_ handle: Int64, _ intent: Intent?, environment: JNIEnvironment) throws {
         guard let intent else { return }
-        NativeHandle<ABattery>.owner(handle)?.received(intent)
+        try NativeHandle<ABattery>.owner(handle)?.received(intent)
     }
 }

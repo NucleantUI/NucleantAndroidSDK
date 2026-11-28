@@ -48,16 +48,16 @@ public final class ANetwork: @unchecked Sendable {
     public init() throws {
         let environment = try JavaVirtualMachine.shared().environment()
         let context = try AndroidContext.shared.applicationContext(in: environment)
-        guard let manager = context.getSystemService("connectivity")?.as(ConnectivityManager.self) else {
+        guard let manager = try context.getSystemService("connectivity")?.as(ConnectivityManager.self) else {
             throw AndroidError.serviceUnavailable("connectivity")
         }
         self.manager = manager
-        if let network = manager.getActiveNetwork(), let capabilities = manager.getNetworkCapabilities(network) {
-            update(network: network.getNetworkHandle(), capabilities)
+        if let network = try manager.getActiveNetwork(), let capabilities = try manager.getNetworkCapabilities(network) {
+            try update(network: network.getNetworkHandle(), capabilities)
         }
         // Calls back right away with the current default network, then on every change.
         let handle = NativeHandle.retain(self)
-        let callback = DefaultNetworkCallback(handle, environment: environment)
+        let callback = try DefaultNetworkCallback(handle, environment: environment)
         self.handle = handle
         self.callback = callback
         try manager.registerDefaultNetworkCallback(callback, try AndroidMainThread.shared.mainHandler(in: environment))
@@ -70,20 +70,20 @@ public final class ANetwork: @unchecked Sendable {
         let handle = self.handle
         try? AndroidMainThread.shared.post { environment in
             let callback = networkCallback.wrapped(as: DefaultNetworkCallback.self, in: environment)
-            callback.disarm()
+            try? callback.disarm()
             try? manager.wrapped(as: ConnectivityManager.self, in: environment).unregisterNetworkCallback(callback)
             NativeHandle<ANetwork>.release(handle)
         }
     }
 
-    func update(network: Int64, _ capabilities: NetworkCapabilities) {
+    func update(network: Int64, _ capabilities: NetworkCapabilities) throws {
         currentNetwork = network
         isConnected = true
-        isValidated = capabilities.hasCapability(Self.capabilityValidated)
-        isMetered = !capabilities.hasCapability(Self.capabilityNotMetered)
-        transports = Set(ANetworkTransport.allCases.filter { capabilities.hasTransport($0.rawValue) })
-        downstreamBandwidth = Int(capabilities.getLinkDownstreamBandwidthKbps())
-        upstreamBandwidth = Int(capabilities.getLinkUpstreamBandwidthKbps())
+        isValidated = try capabilities.hasCapability(Self.capabilityValidated)
+        isMetered = !(try capabilities.hasCapability(Self.capabilityNotMetered))
+        transports = Set(try ANetworkTransport.allCases.filter { try capabilities.hasTransport($0.rawValue) })
+        downstreamBandwidth = Int(try capabilities.getLinkDownstreamBandwidthKbps())
+        upstreamBandwidth = Int(try capabilities.getLinkUpstreamBandwidthKbps())
     }
 
     /// When the default network switches, the old one can be reported lost after
@@ -110,10 +110,10 @@ public final class ANetwork: @unchecked Sendable {
 @JavaClass("android.net.ConnectivityManager")
 open class ConnectivityManager: JavaObject {
     @JavaMethod
-    open func getActiveNetwork() -> Network!
+    open func getActiveNetwork() throws -> Network!
 
     @JavaMethod
-    open func getNetworkCapabilities(_ network: Network?) -> NetworkCapabilities!
+    open func getNetworkCapabilities(_ network: Network?) throws -> NetworkCapabilities!
 
     /// `registerDefaultNetworkCallback(NetworkCallback, Handler)`, API 26.
     @JavaMethod
@@ -131,23 +131,23 @@ open class ConnectivityManagerNetworkCallback: JavaObject {}
 @JavaClass("android.net.Network")
 open class Network: JavaObject {
     @JavaMethod
-    open func getNetworkHandle() -> Int64
+    open func getNetworkHandle() throws -> Int64
 }
 
 /// `android.net.NetworkCapabilities`.
 @JavaClass("android.net.NetworkCapabilities")
 open class NetworkCapabilities: JavaObject {
     @JavaMethod
-    open func hasTransport(_ transportType: Int32) -> Bool
+    open func hasTransport(_ transportType: Int32) throws -> Bool
 
     @JavaMethod
-    open func hasCapability(_ capability: Int32) -> Bool
+    open func hasCapability(_ capability: Int32) throws -> Bool
 
     @JavaMethod
-    open func getLinkDownstreamBandwidthKbps() -> Int32
+    open func getLinkDownstreamBandwidthKbps() throws -> Int32
 
     @JavaMethod
-    open func getLinkUpstreamBandwidthKbps() -> Int32
+    open func getLinkUpstreamBandwidthKbps() throws -> Int32
 }
 
 // MARK: - DefaultNetworkCallback (Android/java)
@@ -155,10 +155,10 @@ open class NetworkCapabilities: JavaObject {
 @JavaClass("org.nucleantui.android.network.DefaultNetworkCallback")
 class DefaultNetworkCallback: ConnectivityManagerNetworkCallback {
     @JavaMethod
-    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 }
 
 @JavaImplementation("org.nucleantui.android.network.DefaultNetworkCallback")
@@ -166,9 +166,9 @@ extension DefaultNetworkCallback {
     @JavaMethod
     static func nativeOnCapabilitiesChanged(
         _ handle: Int64, _ network: Int64, _ capabilities: NetworkCapabilities?, environment: JNIEnvironment
-    ) {
+    ) throws {
         guard let capabilities else { return }
-        NativeHandle<ANetwork>.owner(handle)?.update(network: network, capabilities)
+        try NativeHandle<ANetwork>.owner(handle)?.update(network: network, capabilities)
     }
 
     @JavaMethod

@@ -28,17 +28,17 @@ public final class AClipboard: @unchecked Sendable {
     public init() throws {
         let environment = try JavaVirtualMachine.shared().environment()
         let context = try AndroidContext.shared.applicationContext(in: environment)
-        guard let manager = context.getSystemService("clipboard")?.as(ClipboardManager.self) else {
+        guard let manager = try context.getSystemService("clipboard")?.as(ClipboardManager.self) else {
             throw AndroidError.serviceUnavailable("clipboard")
         }
         self.manager = manager
         self.context = context
         let handle = NativeHandle.retain(self)
-        let listener = ClipChangedListener(handle, environment: environment)
+        let listener = try ClipChangedListener(handle, environment: environment)
         self.handle = handle
         self.listener = listener
-        manager.addPrimaryClipChangedListener(listener.clipListener)
-        refresh()
+        try manager.addPrimaryClipChangedListener(listener.clipListener)
+        try refresh()
     }
 
     deinit {
@@ -48,8 +48,8 @@ public final class AClipboard: @unchecked Sendable {
         let handle = self.handle
         try? AndroidMainThread.shared.post { environment in
             let listener = changedListener.wrapped(as: ClipChangedListener.self, in: environment)
-            listener.disarm()
-            manager.wrapped(as: ClipboardManager.self, in: environment).removePrimaryClipChangedListener(listener.clipListener)
+            try? listener.disarm()
+            try? manager.wrapped(as: ClipboardManager.self, in: environment).removePrimaryClipChangedListener(listener.clipListener)
             NativeHandle<AClipboard>.release(handle)
         }
     }
@@ -64,31 +64,31 @@ public final class AClipboard: @unchecked Sendable {
         let environment = try JavaVirtualMachine.shared().environment()
         let clip = try JavaClass<ClipData>(environment: environment).newPlainText(
             charSequence(label, in: environment), charSequence(text, in: environment))
-        manager.setPrimaryClip(clip)
+        try manager.setPrimaryClip(clip)
         self.text = text
     }
 
     /// Empty the clipboard. Android 9+.
-    public func clear() {
-        manager.clearPrimaryClip()
+    public func clear() throws {
+        try manager.clearPrimaryClip()
         text = nil
     }
 
     /// Read the clipboard again.
-    public func refresh() {
-        guard manager.hasPrimaryClip(), let clip = manager.getPrimaryClip(), clip.getItemCount() > 0,
-              let item = clip.getItemAt(0)
+    public func refresh() throws {
+        guard try manager.hasPrimaryClip(), let clip = try manager.getPrimaryClip(), try clip.getItemCount() > 0,
+              let item = try clip.getItemAt(0)
         else {
             text = nil
             return
         }
         // coerceToText also turns a URI or an Intent into text.
-        text = item.coerceToText(context)?.toString()
+        text = try item.coerceToText(context)?.toString()
     }
 
-    func changed() {
+    func changed() throws {
         changeCount += 1
-        refresh()
+        try refresh()
     }
 }
 
@@ -98,23 +98,23 @@ public final class AClipboard: @unchecked Sendable {
 @JavaClass("android.content.ClipboardManager")
 open class ClipboardManager: JavaObject {
     @JavaMethod
-    open func hasPrimaryClip() -> Bool
+    open func hasPrimaryClip() throws -> Bool
 
     @JavaMethod
-    open func getPrimaryClip() -> ClipData!
+    open func getPrimaryClip() throws -> ClipData!
 
     @JavaMethod
-    open func setPrimaryClip(_ clip: ClipData?)
+    open func setPrimaryClip(_ clip: ClipData?) throws
 
     /// API 28.
     @JavaMethod
-    open func clearPrimaryClip()
+    open func clearPrimaryClip() throws
 
     @JavaMethod
-    open func addPrimaryClipChangedListener(_ listener: OnPrimaryClipChangedListener?)
+    open func addPrimaryClipChangedListener(_ listener: OnPrimaryClipChangedListener?) throws
 
     @JavaMethod
-    open func removePrimaryClipChangedListener(_ listener: OnPrimaryClipChangedListener?)
+    open func removePrimaryClipChangedListener(_ listener: OnPrimaryClipChangedListener?) throws
 }
 
 /// `android.content.ClipboardManager.OnPrimaryClipChangedListener`.
@@ -125,22 +125,22 @@ public struct OnPrimaryClipChangedListener {}
 @JavaClass("android.content.ClipData")
 open class ClipData: JavaObject {
     @JavaMethod
-    open func getItemCount() -> Int32
+    open func getItemCount() throws -> Int32
 
     @JavaMethod
-    open func getItemAt(_ index: Int32) -> ClipDataItem!
+    open func getItemAt(_ index: Int32) throws -> ClipDataItem!
 }
 
 extension JavaClass<ClipData> {
     @JavaStaticMethod
-    public func newPlainText(_ label: CharSequence?, _ text: CharSequence?) -> ClipData!
+    public func newPlainText(_ label: CharSequence?, _ text: CharSequence?) throws -> ClipData!
 }
 
 /// `android.content.ClipData.Item`.
 @JavaClass("android.content.ClipData$Item")
 open class ClipDataItem: JavaObject {
     @JavaMethod
-    open func coerceToText(_ context: Context?) -> CharSequence?
+    open func coerceToText(_ context: Context?) throws -> CharSequence?
 }
 
 // MARK: - ClipChangedListener (Android/java)
@@ -148,10 +148,10 @@ open class ClipDataItem: JavaObject {
 @JavaClass("org.nucleantui.android.clipboard.ClipChangedListener", implements: OnPrimaryClipChangedListener.self)
 class ClipChangedListener: JavaObject {
     @JavaMethod
-    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 
     var clipListener: OnPrimaryClipChangedListener? { self.as(OnPrimaryClipChangedListener.self) }
 }
@@ -159,7 +159,7 @@ class ClipChangedListener: JavaObject {
 @JavaImplementation("org.nucleantui.android.clipboard.ClipChangedListener")
 extension ClipChangedListener {
     @JavaMethod
-    static func nativeOnPrimaryClipChanged(_ handle: Int64, environment: JNIEnvironment) {
-        NativeHandle<AClipboard>.owner(handle)?.changed()
+    static func nativeOnPrimaryClipChanged(_ handle: Int64, environment: JNIEnvironment) throws {
+        try NativeHandle<AClipboard>.owner(handle)?.changed()
     }
 }

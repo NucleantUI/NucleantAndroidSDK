@@ -39,32 +39,32 @@ func decodePixels(_ data: [UInt8], maxPixelSize: Int, rotation: Int) throws -> A
     let environment = try JavaVirtualMachine.shared().environment()
     let factory = try JavaClass<BitmapFactory>(environment: environment)
 
-    let bounds = BitmapFactoryOptions(environment: environment)
+    let bounds = try BitmapFactoryOptions(environment: environment)
     bounds.inJustDecodeBounds = true
-    _ = factory.decodeByteArray(data, 0, Int32(data.count), bounds)
+    _ = try factory.decodeByteArray(data, 0, Int32(data.count), bounds)
     guard bounds.outWidth > 0, bounds.outHeight > 0 else {
         throw APhotoLibraryError.decodingFailed
     }
 
-    let options = BitmapFactoryOptions(environment: environment)
+    let options = try BitmapFactoryOptions(environment: environment)
     options.inSampleSize = Int32(sampleSize(width: Int(bounds.outWidth), height: Int(bounds.outHeight), maxPixelSize: maxPixelSize))
     options.inPreferredConfig = try JavaClass<BitmapConfig>(environment: environment).ARGB_8888
-    guard var bitmap = factory.decodeByteArray(data, 0, Int32(data.count), options) else {
+    guard var bitmap = try factory.decodeByteArray(data, 0, Int32(data.count), options) else {
         throw APhotoLibraryError.decodingFailed
     }
     if rotation % 360 != 0 {
-        let matrix = Matrix(environment: environment)
-        _ = matrix.postRotate(Float(rotation))
+        let matrix = try Matrix(environment: environment)
+        _ = try matrix.postRotate(Float(rotation))
         if let rotated = try JavaClass<Bitmap>(environment: environment).createBitmap(
             bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true)
         {
-            bitmap.recycle()
+            try bitmap.recycle()
             bitmap = rotated
         }
     }
-    defer { bitmap.recycle() }
+    defer { try? bitmap.recycle() }
 
-    var pixels = [UInt8](repeating: 0, count: Int(bitmap.getByteCount()))
+    var pixels = [UInt8](repeating: 0, count: Int(try bitmap.getByteCount()))
     try pixels.withUnsafeMutableBytes { raw in
         guard let buffer = environment.interface.NewDirectByteBuffer(environment, raw.baseAddress, Int64(raw.count)) else {
             throw APhotoLibraryError.decodingFailed
@@ -72,9 +72,9 @@ func decodePixels(_ data: [UInt8], maxPixelSize: Int, rotation: Int) throws -> A
         try bitmap.copyPixelsToBuffer(JavaNioBufferObject(javaThis: buffer, environment: environment))
     }
     return APixelBuffer(
-        width: Int(bitmap.getWidth()),
-        height: Int(bitmap.getHeight()),
-        bytesPerRow: Int(bitmap.getRowBytes()),
+        width: Int(try bitmap.getWidth()),
+        height: Int(try bitmap.getHeight()),
+        bytesPerRow: Int(try bitmap.getRowBytes()),
         pixels: pixels
     )
 }
@@ -97,14 +97,14 @@ open class BitmapFactory: JavaObject {}
 
 extension JavaClass<BitmapFactory> {
     @JavaStaticMethod
-    public func decodeByteArray(_ data: [UInt8], _ offset: Int32, _ length: Int32, _ options: BitmapFactoryOptions?) -> Bitmap!
+    public func decodeByteArray(_ data: [UInt8], _ offset: Int32, _ length: Int32, _ options: BitmapFactoryOptions?) throws -> Bitmap!
 }
 
 /// `android.graphics.BitmapFactory.Options`.
 @JavaClass("android.graphics.BitmapFactory$Options")
 open class BitmapFactoryOptions: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(environment: JNIEnvironment? = nil) throws
 
     @JavaField public var inJustDecodeBounds: Bool
     @JavaField public var inSampleSize: Int32
@@ -126,10 +126,10 @@ extension JavaClass<BitmapConfig> {
 @JavaClass("android.graphics.Matrix")
 open class Matrix: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func postRotate(_ degrees: Float) -> Bool
+    open func postRotate(_ degrees: Float) throws -> Bool
 }
 
 /// `java.nio.Buffer`, for `Bitmap.copyPixelsToBuffer`.

@@ -90,8 +90,8 @@ public final class LabCamera: @unchecked Sendable {
     public var hasFlash: Bool { camera.hasFlash }
     public var sensorOrientation: Int32 { Int32(camera.sensorOrientation) }
     public var photoSizeCount: Int32 { Int32(camera.photoSizes.count) }
-    public var largestPhotoWidth: Int32 { camera.photoSizes.first?.getWidth() ?? 0 }
-    public var largestPhotoHeight: Int32 { camera.photoSizes.first?.getHeight() ?? 0 }
+    public var largestPhotoWidth: Int32 { get throws { try camera.photoSizes.first?.getWidth() ?? 0 } }
+    public var largestPhotoHeight: Int32 { get throws { try camera.photoSizes.first?.getHeight() ?? 0 } }
     public var isCapturing: Bool { camera.isCapturing }
     public var isPreviewing: Bool { camera.isPreviewing }
     public var previewWidth: Int32 { Int32(camera.previewWidth) }
