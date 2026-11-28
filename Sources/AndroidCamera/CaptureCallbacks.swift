@@ -20,10 +20,10 @@ import SwiftJava
 @JavaClass("org.nucleantui.android.camera.CameraStateCallback")
 class CameraStateCallback: CameraDeviceStateCallback {
     @JavaMethod
-    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 }
 
 @JavaImplementation("org.nucleantui.android.camera.CameraStateCallback")
@@ -50,10 +50,10 @@ extension CameraStateCallback {
 @JavaClass("org.nucleantui.android.camera.CaptureSessionCallback")
 class CaptureSessionCallback: CameraCaptureSessionStateCallback {
     @JavaMethod
-    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 }
 
 @JavaImplementation("org.nucleantui.android.camera.CaptureSessionCallback")
@@ -75,10 +75,10 @@ extension CaptureSessionCallback {
 @JavaClass("org.nucleantui.android.camera.ImageAvailableListener", implements: ImageReaderOnImageAvailableListener.self)
 class ImageAvailableListener: JavaObject {
     @JavaMethod
-    convenience init(_ handle: Int64, _ stream: Int32, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, _ stream: Int32, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 }
 
 @JavaImplementation("org.nucleantui.android.camera.ImageAvailableListener")

@@ -68,15 +68,15 @@ public final class ADevice: @unchecked Sendable {
         isEmulator = Self.looksLikeEmulator(fingerprint: fingerprint, hardware: hardware, product: product)
 
         let context = try AndroidContext.shared.applicationContext(in: environment)
-        let metrics = context.getResources()?.getDisplayMetrics()
+        let metrics = try context.getResources()?.getDisplayMetrics()
         screenWidth = Int(metrics?.widthPixels ?? 0)
         screenHeight = Int(metrics?.heightPixels ?? 0)
         screenDensity = Double(metrics?.density ?? 1)
         screenDPI = Int(metrics?.densityDpi ?? 160)
-        activityManager = context.getSystemService("activity")?.as(ActivityManager.self)
+        activityManager = try context.getSystemService("activity")?.as(ActivityManager.self)
 
         if let window = try? AndroidContext.shared.activity(in: environment).getWindow(),
-           let attributes = window.getAttributes()
+           let attributes = try window.getAttributes()
         {
             keepsScreenOn = attributes.flags & WindowLayoutParams.flagKeepScreenOn != 0
             screenBrightness = attributes.screenBrightness < 0 ? nil : Double(attributes.screenBrightness)
@@ -87,8 +87,8 @@ public final class ADevice: @unchecked Sendable {
     /// Read the memory figures again.
     public func refresh() throws {
         guard let activityManager else { return }
-        let info = ActivityManagerMemoryInfo(environment: try JavaVirtualMachine.shared().environment())
-        activityManager.getMemoryInfo(info)
+        let info = try ActivityManagerMemoryInfo(environment: try JavaVirtualMachine.shared().environment())
+        try activityManager.getMemoryInfo(info)
         totalMemory = info.totalMem
         availableMemory = info.availMem
         isLowOnMemory = info.lowMemory
@@ -98,9 +98,9 @@ public final class ADevice: @unchecked Sendable {
     public func setKeepsScreenOn(_ on: Bool) throws {
         let window = try activityWindow()
         if on {
-            window.addFlags(WindowLayoutParams.flagKeepScreenOn)
+            try window.addFlags(WindowLayoutParams.flagKeepScreenOn)
         } else {
-            window.clearFlags(WindowLayoutParams.flagKeepScreenOn)
+            try window.clearFlags(WindowLayoutParams.flagKeepScreenOn)
         }
         keepsScreenOn = on
     }
@@ -109,9 +109,9 @@ public final class ADevice: @unchecked Sendable {
     /// showing; nil hands it back to the system.
     public func setScreenBrightness(_ brightness: Double?) throws {
         let window = try activityWindow()
-        guard let attributes = window.getAttributes() else { return }
+        guard let attributes = try window.getAttributes() else { return }
         attributes.screenBrightness = brightness.map { Float(min(max($0, 0), 1)) } ?? -1
-        window.setAttributes(attributes)
+        try window.setAttributes(attributes)
         screenBrightness = brightness.map { min(max($0, 0), 1) }
     }
 
@@ -151,14 +151,14 @@ extension JavaClass<Build> {
 @JavaClass("android.app.ActivityManager")
 open class ActivityManager: JavaObject {
     @JavaMethod
-    open func getMemoryInfo(_ outInfo: ActivityManagerMemoryInfo?)
+    open func getMemoryInfo(_ outInfo: ActivityManagerMemoryInfo?) throws
 }
 
 /// `android.app.ActivityManager.MemoryInfo`.
 @JavaClass("android.app.ActivityManager$MemoryInfo")
 open class ActivityManagerMemoryInfo: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(environment: JNIEnvironment? = nil) throws
 
     @JavaField public var totalMem: Int64
     @JavaField public var availMem: Int64

@@ -26,9 +26,9 @@ public final class AShareSheet: @unchecked Sendable {
     /// Offer `text` to the apps that take text.
     public func share(text: String, title: String? = nil) throws {
         let environment = try JavaVirtualMachine.shared().environment()
-        let intent = Intent(Self.actionSend, environment: environment)
-        _ = intent.setType("text/plain")
-        _ = intent.putExtra(Self.extraText, JavaString(text, environment: environment))
+        let intent = try Intent(Self.actionSend, environment: environment)
+        _ = try intent.setType("text/plain")
+        _ = try intent.putExtra(Self.extraText, JavaString(text, environment: environment))
         try present(intent, title: title, in: environment)
     }
 
@@ -36,10 +36,10 @@ public final class AShareSheet: @unchecked Sendable {
     /// that take `mimeType`.
     public func share(uri: Uri, mimeType: String, title: String? = nil) throws {
         let environment = try JavaVirtualMachine.shared().environment()
-        let intent = Intent(Self.actionSend, environment: environment)
-        _ = intent.setType(mimeType)
-        _ = intent.putExtra(Self.extraStream, try uri.boundToCurrentThread().as(Parcelable.self))
-        _ = intent.addFlags(Self.flagGrantReadURIPermission)
+        let intent = try Intent(Self.actionSend, environment: environment)
+        _ = try intent.setType(mimeType)
+        _ = try intent.putExtra(Self.extraStream, try uri.boundToCurrentThread().as(Parcelable.self))
+        _ = try intent.addFlags(Self.flagGrantReadURIPermission)
         try present(intent, title: title, in: environment)
     }
 

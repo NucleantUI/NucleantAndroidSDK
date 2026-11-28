@@ -25,11 +25,11 @@ public final class ADocuments: @unchecked Sendable {
     /// "text/plain"; empty for any). Nil when they cancelled.
     public func open(mimeTypes: [String] = []) async throws -> ADocument? {
         let environment = try JavaVirtualMachine.shared().environment()
-        let intent = Intent("android.intent.action.OPEN_DOCUMENT", environment: environment)
-        _ = intent.addCategory("android.intent.category.OPENABLE")
-        _ = intent.setType(mimeTypes.count == 1 ? mimeTypes[0] : "*/*")
+        let intent = try Intent("android.intent.action.OPEN_DOCUMENT", environment: environment)
+        _ = try intent.addCategory("android.intent.category.OPENABLE")
+        _ = try intent.setType(mimeTypes.count == 1 ? mimeTypes[0] : "*/*")
         if mimeTypes.count > 1 {
-            _ = intent.putExtra("android.intent.extra.MIME_TYPES", mimeTypes)
+            _ = try intent.putExtra("android.intent.extra.MIME_TYPES", mimeTypes)
         }
         return try await pick(intent)
     }
@@ -38,10 +38,10 @@ public final class ADocuments: @unchecked Sendable {
     /// `name`. Nil when they cancelled; otherwise an empty document to `write` to.
     public func create(name: String, mimeType: String) async throws -> ADocument? {
         let environment = try JavaVirtualMachine.shared().environment()
-        let intent = Intent("android.intent.action.CREATE_DOCUMENT", environment: environment)
-        _ = intent.addCategory("android.intent.category.OPENABLE")
-        _ = intent.setType(mimeType)
-        _ = intent.putExtra("android.intent.extra.TITLE", JavaString(name, environment: environment))
+        let intent = try Intent("android.intent.action.CREATE_DOCUMENT", environment: environment)
+        _ = try intent.addCategory("android.intent.category.OPENABLE")
+        _ = try intent.setType(mimeType)
+        _ = try intent.putExtra("android.intent.extra.TITLE", JavaString(name, environment: environment))
         return try await pick(intent)
     }
 
@@ -49,7 +49,7 @@ public final class ADocuments: @unchecked Sendable {
         let result = try await AndroidContext.shared.startActivityForResult(intent)
         guard result.isOK, let data = result.data else { return nil }
         return try await AndroidMainThread.shared.run { environment in
-            guard let uri = data.wrapped(as: Intent.self, in: environment).getData() else {
+            guard let uri = try data.wrapped(as: Intent.self, in: environment).getData() else {
                 throw AndroidError.unexpectedResult("The document picker sent back no document")
             }
             let document = try ADocument(uri: uri, in: environment)
@@ -74,7 +74,7 @@ public final class ADocument: Identifiable, @unchecked Sendable {
     init(uri: Uri, in environment: JNIEnvironment) throws {
         self.uri = uri
         mimeType = try documentResolver(in: environment).getType(uri)
-        name = uri.getLastPathSegment()
+        name = try uri.getLastPathSegment()
         try refresh()
     }
 
@@ -83,12 +83,12 @@ public final class ADocument: Identifiable, @unchecked Sendable {
         let environment = try JavaVirtualMachine.shared().environment()
         let resolver = try documentResolver(in: environment)
         guard let cursor = try resolver.query(uri, ["_display_name", "_size"], nil, [], nil) else { return }
-        defer { cursor.close() }
-        guard cursor.moveToNext() else { return }
+        defer { try? cursor.close() }
+        guard try cursor.moveToNext() else { return }
         let nameColumn = try cursor.getColumnIndexOrThrow("_display_name")
         let sizeColumn = try cursor.getColumnIndexOrThrow("_size")
-        name = cursor.getString(nameColumn)
-        size = cursor.isNull(sizeColumn) ? nil : cursor.getLong(sizeColumn)
+        name = try cursor.getString(nameColumn)
+        size = try cursor.isNull(sizeColumn) ? nil : cursor.getLong(sizeColumn)
     }
 
     /// The document's bytes, read off the main thread.
@@ -124,7 +124,7 @@ private func documentResolver(in environment: JNIEnvironment) throws -> Document
 extension Context {
     /// `getContentResolver()`, as this module's wrapper of it.
     @JavaMethod("getContentResolver")
-    func getDocumentResolver() -> DocumentResolver!
+    func getDocumentResolver() throws -> DocumentResolver!
 }
 
 /// `android.content.ContentResolver`: what documents need of it.
@@ -139,23 +139,23 @@ open class DocumentResolver: JavaObject {
     open func openFileDescriptor(_ uri: Uri?, _ mode: String) throws -> DocumentFileDescriptor!
 
     @JavaMethod
-    open func getType(_ uri: Uri?) -> String
+    open func getType(_ uri: Uri?) throws -> String
 }
 
 /// `android.database.Cursor`: what documents need of it.
 @JavaInterface("android.database.Cursor")
 public struct DocumentCursor {
-    @JavaMethod public func moveToNext() -> Bool
+    @JavaMethod public func moveToNext() throws -> Bool
     @JavaMethod public func getColumnIndexOrThrow(_ columnName: String) throws -> Int32
-    @JavaMethod public func getLong(_ columnIndex: Int32) -> Int64
-    @JavaMethod public func getString(_ columnIndex: Int32) -> String
-    @JavaMethod public func isNull(_ columnIndex: Int32) -> Bool
-    @JavaMethod public func close()
+    @JavaMethod public func getLong(_ columnIndex: Int32) throws -> Int64
+    @JavaMethod public func getString(_ columnIndex: Int32) throws -> String
+    @JavaMethod public func isNull(_ columnIndex: Int32) throws -> Bool
+    @JavaMethod public func close() throws
 }
 
 /// `android.os.ParcelFileDescriptor`.
 @JavaClass("android.os.ParcelFileDescriptor")
 open class DocumentFileDescriptor: JavaObject {
     @JavaMethod
-    open func detachFd() -> Int32
+    open func detachFd() throws -> Int32
 }

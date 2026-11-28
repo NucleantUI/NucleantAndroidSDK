@@ -80,26 +80,26 @@ public final class ANotifications: @unchecked Sendable {
     public init(channelID: String = "default", channelName: String = "Notifications") throws {
         let environment = try JavaVirtualMachine.shared().environment()
         let context = try AndroidContext.shared.applicationContext(in: environment)
-        guard let manager = context.getSystemService("notification")?.as(NotificationManager.self) else {
+        guard let manager = try context.getSystemService("notification")?.as(NotificationManager.self) else {
             throw AndroidError.serviceUnavailable("notification")
         }
         self.manager = manager
         self.context = context
         self.defaultChannelID = channelID
         self.sdkLevel = try AndroidContext.shared.sdkLevel(in: environment)
-        self.isAuthorized = manager.areNotificationsEnabled()
+        self.isAuthorized = try manager.areNotificationsEnabled()
         try createChannel(id: channelID, name: channelName, importance: .default)
 
         AndroidContext.shared.addIntentHandler { [weak self] intent in
             guard let self else { return false }
-            self.received(intent)
+            try self.received(intent)
             return true
         }
         // Started by a tap?
-        if let launch = try? AndroidContext.shared.activity(in: environment).getIntent() {
-            received(launch)
+        if let launch = try AndroidContext.shared.activity(in: environment).getIntent() {
+            try received(launch)
         }
-        refresh()
+        try refresh()
     }
 
     // MARK: - Access
@@ -110,7 +110,7 @@ public final class ANotifications: @unchecked Sendable {
             _ = try await AndroidContext.shared.requestPermissions([Self.permission])
         }
         return try await AndroidMainThread.shared.run { _ in
-            self.refresh()
+            try self.refresh()
             return self.isAuthorized
         }
     }
@@ -121,15 +121,15 @@ public final class ANotifications: @unchecked Sendable {
     /// on creation: after that it is the user's to change.
     public func createChannel(id: String, name: String, importance: ANotificationImportance) throws {
         let environment = try JavaVirtualMachine.shared().environment()
-        manager.createNotificationChannel(
+        try manager.createNotificationChannel(
             NotificationChannel(id, charSequence(name, in: environment), importance.rawValue, environment: environment))
-        refresh()
+        try refresh()
     }
 
-    public func deleteChannel(_ id: String) {
+    public func deleteChannel(_ id: String) throws {
         guard id != defaultChannelID else { return }
-        manager.deleteNotificationChannel(id)
-        refresh()
+        try manager.deleteNotificationChannel(id)
+        try refresh()
     }
 
     // MARK: - Posting
@@ -149,61 +149,61 @@ public final class ANotifications: @unchecked Sendable {
         try show(id: id, title: title, body: body, channelID: channelID ?? defaultChannelID)
     }
 
-    public func cancel(_ id: Int32) {
-        manager.cancel(id)
-        refresh()
+    public func cancel(_ id: Int32) throws {
+        try manager.cancel(id)
+        try refresh()
     }
 
-    public func cancelAll() {
-        manager.cancelAll()
-        refresh()
+    public func cancelAll() throws {
+        try manager.cancelAll()
+        try refresh()
     }
 
     private func show(id: Int32, title: String, body: String, channelID: String) throws {
         let environment = try JavaVirtualMachine.shared().environment()
-        let builder = NotificationBuilder(context, channelID, environment: environment)
-        _ = builder.setContentTitle(charSequence(title, in: environment))
-        _ = builder.setContentText(charSequence(body, in: environment))
-        _ = builder.setSmallIcon(try JavaClass<AndroidRDrawable>(environment: environment).ic_dialog_info)
-        _ = builder.setAutoCancel(true)
-        if let launch = context.getPackageManager()?.getLaunchIntentForPackage(context.getPackageName()) {
-            _ = launch.putExtra(Self.tappedExtra, id)
-            _ = launch.addFlags(Self.flagActivitySingleTop | Self.flagActivityClearTop)
+        let builder = try NotificationBuilder(context, channelID, environment: environment)
+        _ = try builder.setContentTitle(charSequence(title, in: environment))
+        _ = try builder.setContentText(charSequence(body, in: environment))
+        _ = try builder.setSmallIcon(try JavaClass<AndroidRDrawable>(environment: environment).ic_dialog_info)
+        _ = try builder.setAutoCancel(true)
+        if let launch = try context.getPackageManager()?.getLaunchIntentForPackage(context.getPackageName()) {
+            _ = try launch.putExtra(Self.tappedExtra, id)
+            _ = try launch.addFlags(Self.flagActivitySingleTop | Self.flagActivityClearTop)
             let pending = try JavaClass<PendingIntent>(environment: environment)
                 .getActivity(context, id, launch, Self.flagImmutable | Self.flagUpdateCurrent)
-            _ = builder.setContentIntent(pending)
+            _ = try builder.setContentIntent(pending)
         }
-        manager.notify(id, builder.build())
-        refresh()
+        try manager.notify(id, builder.build())
+        try refresh()
     }
 
     // MARK: - State
 
     /// Read the permission state, channels and notifications in the shade again.
-    public func refresh() {
-        isAuthorized = manager.areNotificationsEnabled()
-        activeCount = manager.getActiveNotifications().count
+    public func refresh() throws {
+        isAuthorized = try manager.areNotificationsEnabled()
+        activeCount = try manager.getActiveNotifications().count
         var channels: [ANotificationChannel] = []
-        if let list = manager.getNotificationChannels() {
+        if let list = try manager.getNotificationChannels() {
             for channel in list {
                 channels.append(ANotificationChannel(
-                    id: channel.getId(),
-                    name: channel.getName()?.toString() ?? channel.getId(),
-                    importance: ANotificationImportance(rawValue: channel.getImportance()) ?? .default
+                    id: try channel.getId(),
+                    name: try channel.getName()?.toString() ?? channel.getId(),
+                    importance: ANotificationImportance(rawValue: try channel.getImportance()) ?? .default
                 ))
             }
         }
         self.channels = channels
     }
 
-    private func received(_ intent: Intent) {
-        guard intent.hasExtra(Self.tappedExtra) else { return }
-        let id = intent.getIntExtra(Self.tappedExtra, -1)
+    private func received(_ intent: Intent) throws {
+        guard try intent.hasExtra(Self.tappedExtra) else { return }
+        let id = try intent.getIntExtra(Self.tappedExtra, -1)
         // Reported once: a recreated Activity gets the same intent back.
-        intent.removeExtra(Self.tappedExtra)
+        try intent.removeExtra(Self.tappedExtra)
         lastTapped = id
         tapCount += 1
-        refresh()
+        try refresh()
     }
 
     static let flagUpdateCurrent: Int32 = 0x0800_0000
@@ -218,28 +218,28 @@ public final class ANotifications: @unchecked Sendable {
 @JavaClass("android.app.NotificationManager")
 open class NotificationManager: JavaObject {
     @JavaMethod
-    open func areNotificationsEnabled() -> Bool
+    open func areNotificationsEnabled() throws -> Bool
 
     @JavaMethod
-    open func createNotificationChannel(_ channel: NotificationChannel?)
+    open func createNotificationChannel(_ channel: NotificationChannel?) throws
 
     @JavaMethod
-    open func deleteNotificationChannel(_ channelId: String)
+    open func deleteNotificationChannel(_ channelId: String) throws
 
     @JavaMethod
-    open func getNotificationChannels() -> List<NotificationChannel>!
+    open func getNotificationChannels() throws -> List<NotificationChannel>!
 
     @JavaMethod
-    open func notify(_ id: Int32, _ notification: Notification?)
+    open func notify(_ id: Int32, _ notification: Notification?) throws
 
     @JavaMethod
-    open func cancel(_ id: Int32)
+    open func cancel(_ id: Int32) throws
 
     @JavaMethod
-    open func cancelAll()
+    open func cancelAll() throws
 
     @JavaMethod
-    open func getActiveNotifications() -> [StatusBarNotification?]
+    open func getActiveNotifications() throws -> [StatusBarNotification?]
 }
 
 /// `android.app.NotificationChannel`.
@@ -247,16 +247,16 @@ open class NotificationManager: JavaObject {
 open class NotificationChannel: JavaObject {
     @JavaMethod
     @_nonoverride public convenience init(
-        _ id: String, _ name: CharSequence?, _ importance: Int32, environment: JNIEnvironment? = nil)
+        _ id: String, _ name: CharSequence?, _ importance: Int32, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func getId() -> String
+    open func getId() throws -> String
 
     @JavaMethod
-    open func getName() -> CharSequence?
+    open func getName() throws -> CharSequence?
 
     @JavaMethod
-    open func getImportance() -> Int32
+    open func getImportance() throws -> Int32
 }
 
 /// `android.app.Notification`.
@@ -267,25 +267,25 @@ open class Notification: JavaObject {}
 @JavaClass("android.app.Notification$Builder")
 open class NotificationBuilder: JavaObject {
     @JavaMethod
-    @_nonoverride public convenience init(_ context: Context?, _ channelId: String, environment: JNIEnvironment? = nil)
+    @_nonoverride public convenience init(_ context: Context?, _ channelId: String, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    open func setContentTitle(_ title: CharSequence?) -> NotificationBuilder!
+    open func setContentTitle(_ title: CharSequence?) throws -> NotificationBuilder!
 
     @JavaMethod
-    open func setContentText(_ text: CharSequence?) -> NotificationBuilder!
+    open func setContentText(_ text: CharSequence?) throws -> NotificationBuilder!
 
     @JavaMethod
-    open func setSmallIcon(_ icon: Int32) -> NotificationBuilder!
+    open func setSmallIcon(_ icon: Int32) throws -> NotificationBuilder!
 
     @JavaMethod
-    open func setAutoCancel(_ autoCancel: Bool) -> NotificationBuilder!
+    open func setAutoCancel(_ autoCancel: Bool) throws -> NotificationBuilder!
 
     @JavaMethod
-    open func setContentIntent(_ intent: PendingIntent?) -> NotificationBuilder!
+    open func setContentIntent(_ intent: PendingIntent?) throws -> NotificationBuilder!
 
     @JavaMethod
-    open func build() -> Notification!
+    open func build() throws -> Notification!
 }
 
 /// `android.app.PendingIntent`.
@@ -294,7 +294,7 @@ open class PendingIntent: JavaObject {}
 
 extension JavaClass<PendingIntent> {
     @JavaStaticMethod
-    public func getActivity(_ context: Context?, _ requestCode: Int32, _ intent: Intent?, _ flags: Int32) -> PendingIntent!
+    public func getActivity(_ context: Context?, _ requestCode: Int32, _ intent: Intent?, _ flags: Int32) throws -> PendingIntent!
 }
 
 /// `android.service.notification.StatusBarNotification`.

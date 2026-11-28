@@ -40,15 +40,15 @@ public final class ALocationFix: Sendable {
     /// The provider it came from ("gps", "network", "fused").
     public let provider: String
 
-    init(_ location: Location) {
-        latitude = location.getLatitude()
-        longitude = location.getLongitude()
-        altitude = location.hasAltitude() ? location.getAltitude() : nil
-        accuracy = location.hasAccuracy() ? Double(location.getAccuracy()) : nil
-        speed = location.hasSpeed() ? Double(location.getSpeed()) : nil
-        bearing = location.hasBearing() ? Double(location.getBearing()) : nil
-        time = location.getTime()
-        provider = location.getProvider()
+    init(_ location: Location) throws {
+        latitude = try location.getLatitude()
+        longitude = try location.getLongitude()
+        altitude = try location.hasAltitude() ? location.getAltitude() : nil
+        accuracy = try location.hasAccuracy() ? Double(location.getAccuracy()) : nil
+        speed = try location.hasSpeed() ? Double(location.getSpeed()) : nil
+        bearing = try location.hasBearing() ? Double(location.getBearing()) : nil
+        time = try location.getTime()
+        provider = try location.getProvider()
     }
 }
 
@@ -75,13 +75,13 @@ public final class ALocation: @unchecked Sendable {
     public init() throws {
         let environment = try JavaVirtualMachine.shared().environment()
         let context = try AndroidContext.shared.applicationContext(in: environment)
-        guard let manager = context.getSystemService("location")?.as(LocationManager.self) else {
+        guard let manager = try context.getSystemService("location")?.as(LocationManager.self) else {
             throw AndroidError.serviceUnavailable("location")
         }
         self.manager = manager
         authorization = try Self.currentAuthorization()
-        isEnabled = manager.isLocationEnabled()
-        current = lastKnown()
+        isEnabled = try manager.isLocationEnabled()
+        current = try lastKnown()
     }
 
     deinit {
@@ -91,8 +91,8 @@ public final class ALocation: @unchecked Sendable {
         let handle = self.handle
         try? AndroidMainThread.shared.post { environment in
             let listener = updates.wrapped(as: LocationUpdates.self, in: environment)
-            listener.disarm()
-            manager.wrapped(as: LocationManager.self, in: environment).removeUpdates(listener.locationListener)
+            try? listener.disarm()
+            try? manager.wrapped(as: LocationManager.self, in: environment).removeUpdates(listener.locationListener)
             NativeHandle<ALocation>.release(handle)
         }
     }
@@ -104,7 +104,7 @@ public final class ALocation: @unchecked Sendable {
         try await AndroidMainThread.shared.run { _ in
             self.authorization = authorization
             if self.current == nil {
-                self.current = self.lastKnown()
+                self.current = try self.lastKnown()
             }
         }
         return authorization
@@ -125,10 +125,10 @@ public final class ALocation: @unchecked Sendable {
         }
         if listener == nil {
             handle = NativeHandle.retain(self)
-            listener = LocationUpdates(handle, environment: environment)
+            listener = try LocationUpdates(handle, environment: environment)
         }
         guard let listener else { return }
-        manager.removeUpdates(listener.locationListener)
+        try manager.removeUpdates(listener.locationListener)
         try manager.requestLocationUpdates(
             provider, minimumInterval, minimumDistance, listener.locationListener,
             try JavaClass<Looper>(environment: environment).getMainLooper())
@@ -136,9 +136,9 @@ public final class ALocation: @unchecked Sendable {
         isUpdating = true
     }
 
-    public func stopUpdates() {
+    public func stopUpdates() throws {
         if let listener {
-            manager.removeUpdates(listener.locationListener)
+            try manager.removeUpdates(listener.locationListener)
         }
         isUpdating = false
         provider = nil
@@ -147,21 +147,21 @@ public final class ALocation: @unchecked Sendable {
     /// Read the settings switch and the permission state again.
     public func refresh() throws {
         authorization = try Self.currentAuthorization()
-        isEnabled = manager.isLocationEnabled()
+        isEnabled = try manager.isLocationEnabled()
     }
 
     // MARK: - Callbacks
 
-    func received(_ location: Location) {
-        received(ALocationFix(location))
+    func received(_ location: Location) throws {
+        received(try ALocationFix(location))
     }
 
     func received(_ fix: ALocationFix) {
         current = fix
     }
 
-    func providerChanged(_ provider: String, enabled: Bool) {
-        isEnabled = manager.isLocationEnabled()
+    func providerChanged(_ provider: String, enabled: Bool) throws {
+        isEnabled = try manager.isLocationEnabled()
         if !enabled, provider == self.provider {
             isUpdating = false
         }
@@ -171,7 +171,7 @@ public final class ALocation: @unchecked Sendable {
 
     func enabledProviders() throws -> [String] {
         var names: [String] = []
-        if let providers = manager.getProviders(true) {
+        if let providers = try manager.getProviders(true) {
             for name in providers {
                 names.append(name.toString())
             }
@@ -179,9 +179,9 @@ public final class ALocation: @unchecked Sendable {
         return names
     }
 
-    private func lastKnown() -> ALocationFix? {
+    private func lastKnown() throws -> ALocationFix? {
         guard authorization != .denied, let names = try? enabledProviders() else { return nil }
-        let fixes = names.compactMap { try? manager.getLastKnownLocation($0) }.map(ALocationFix.init)
+        let fixes = try names.compactMap { try? manager.getLastKnownLocation($0) }.map(ALocationFix.init)
         return fixes.max { $0.time < $1.time }
     }
 
@@ -232,10 +232,10 @@ public enum ALocationError: Error, CustomStringConvertible {
 open class LocationManager: JavaObject {
     /// API 28.
     @JavaMethod
-    open func isLocationEnabled() -> Bool
+    open func isLocationEnabled() throws -> Bool
 
     @JavaMethod
-    open func getProviders(_ enabledOnly: Bool) -> List<JavaString>!
+    open func getProviders(_ enabledOnly: Bool) throws -> List<JavaString>!
 
     @JavaMethod
     open func getLastKnownLocation(_ provider: String) throws -> Location!
@@ -246,24 +246,24 @@ open class LocationManager: JavaObject {
     ) throws
 
     @JavaMethod
-    open func removeUpdates(_ listener: LocationListener?)
+    open func removeUpdates(_ listener: LocationListener?) throws
 }
 
 /// `android.location.Location`.
 @JavaClass("android.location.Location")
 open class Location: JavaObject {
-    @JavaMethod open func getLatitude() -> Double
-    @JavaMethod open func getLongitude() -> Double
-    @JavaMethod open func hasAltitude() -> Bool
-    @JavaMethod open func getAltitude() -> Double
-    @JavaMethod open func hasAccuracy() -> Bool
-    @JavaMethod open func getAccuracy() -> Float
-    @JavaMethod open func hasSpeed() -> Bool
-    @JavaMethod open func getSpeed() -> Float
-    @JavaMethod open func hasBearing() -> Bool
-    @JavaMethod open func getBearing() -> Float
-    @JavaMethod open func getTime() -> Int64
-    @JavaMethod open func getProvider() -> String
+    @JavaMethod open func getLatitude() throws -> Double
+    @JavaMethod open func getLongitude() throws -> Double
+    @JavaMethod open func hasAltitude() throws -> Bool
+    @JavaMethod open func getAltitude() throws -> Double
+    @JavaMethod open func hasAccuracy() throws -> Bool
+    @JavaMethod open func getAccuracy() throws -> Float
+    @JavaMethod open func hasSpeed() throws -> Bool
+    @JavaMethod open func getSpeed() throws -> Float
+    @JavaMethod open func hasBearing() throws -> Bool
+    @JavaMethod open func getBearing() throws -> Float
+    @JavaMethod open func getTime() throws -> Int64
+    @JavaMethod open func getProvider() throws -> String
 }
 
 /// `android.location.LocationListener`.
@@ -275,10 +275,10 @@ public struct LocationListener {}
 @JavaClass("org.nucleantui.android.location.LocationUpdates", implements: LocationListener.self)
 class LocationUpdates: JavaObject {
     @JavaMethod
-    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil)
+    convenience init(_ handle: Int64, environment: JNIEnvironment? = nil) throws
 
     @JavaMethod
-    func disarm()
+    func disarm() throws
 
     var locationListener: LocationListener? { self.as(LocationListener.self) }
 }
@@ -286,13 +286,13 @@ class LocationUpdates: JavaObject {
 @JavaImplementation("org.nucleantui.android.location.LocationUpdates")
 extension LocationUpdates {
     @JavaMethod
-    static func nativeOnLocationChanged(_ handle: Int64, _ location: Location?, environment: JNIEnvironment) {
+    static func nativeOnLocationChanged(_ handle: Int64, _ location: Location?, environment: JNIEnvironment) throws {
         guard let location else { return }
-        NativeHandle<ALocation>.owner(handle)?.received(location)
+        try NativeHandle<ALocation>.owner(handle)?.received(location)
     }
 
     @JavaMethod
-    static func nativeOnProviderChanged(_ handle: Int64, _ provider: String, _ enabled: Bool, environment: JNIEnvironment) {
-        NativeHandle<ALocation>.owner(handle)?.providerChanged(provider, enabled: enabled)
+    static func nativeOnProviderChanged(_ handle: Int64, _ provider: String, _ enabled: Bool, environment: JNIEnvironment) throws {
+        try NativeHandle<ALocation>.owner(handle)?.providerChanged(provider, enabled: enabled)
     }
 }

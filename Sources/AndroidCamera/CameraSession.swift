@@ -114,33 +114,33 @@ final class CameraSession: @unchecked Sendable {
             let readers = try JavaClass<ImageReader>(environment: environment)
             self.handler = handler
 
-            guard let photoReader = readers.newInstance(photoSize.getWidth(), photoSize.getHeight(), ImageFormat.jpeg, 2) else {
+            guard let photoReader = try readers.newInstance(photoSize.getWidth(), photoSize.getHeight(), ImageFormat.jpeg, 2) else {
                 throw ACameraError.sessionConfigurationFailed
             }
             self.photoReader = photoReader
-            let photoListener = ImageAvailableListener(handle, Self.photoStream, environment: environment)
+            let photoListener = try ImageAvailableListener(handle, Self.photoStream, environment: environment)
             self.photoListener = photoListener
-            photoReader.setOnImageAvailableListener(photoListener.as(ImageReaderOnImageAvailableListener.self), handler)
+            try photoReader.setOnImageAvailableListener(photoListener.as(ImageReaderOnImageAvailableListener.self), handler)
 
             if let previewTexture, let previewSize {
-                previewTexture.setDefaultBufferSize(previewSize.getWidth(), previewSize.getHeight())
-                previewSurface = Surface(previewTexture, environment: environment)
+                try previewTexture.setDefaultBufferSize(previewSize.getWidth(), previewSize.getHeight())
+                previewSurface = try Surface(previewTexture, environment: environment)
             } else if let warmupSize {
-                guard let warmupReader = readers.newInstance(
+                guard let warmupReader = try readers.newInstance(
                     warmupSize.getWidth(), warmupSize.getHeight(), ImageFormat.yuv420888, 3)
                 else {
                     throw ACameraError.sessionConfigurationFailed
                 }
                 self.warmupReader = warmupReader
-                let warmupListener = ImageAvailableListener(handle, Self.warmupStream, environment: environment)
+                let warmupListener = try ImageAvailableListener(handle, Self.warmupStream, environment: environment)
                 self.warmupListener = warmupListener
-                warmupReader.setOnImageAvailableListener(warmupListener.as(ImageReaderOnImageAvailableListener.self), handler)
+                try warmupReader.setOnImageAvailableListener(warmupListener.as(ImageReaderOnImageAvailableListener.self), handler)
                 scheduleTimeout(forPhoto: 0)
             }
 
-            let deviceCallback = CameraStateCallback(handle, environment: environment)
+            let deviceCallback = try CameraStateCallback(handle, environment: environment)
             self.deviceCallback = deviceCallback
-            self.sessionCallback = CaptureSessionCallback(handle, environment: environment)
+            self.sessionCallback = try CaptureSessionCallback(handle, environment: environment)
             try manager.openCamera(camera.id, deviceCallback, handler)
         } catch {
             close(because: error)
@@ -149,18 +149,18 @@ final class CameraSession: @unchecked Sendable {
 
     /// The surface the repeating request feeds: the preview, or the warm-up reader.
     private var streamSurface: Surface? {
-        previewSurface ?? warmupReader?.getSurface()
+        get throws { try previewSurface ?? warmupReader?.getSurface() }
     }
 
     func opened(_ device: CameraDevice, in environment: JNIEnvironment) {
         self.device = device
         do {
-            guard let streamSurface, let photoSurface = photoReader?.getSurface() else {
+            guard let streamSurface = try streamSurface, let photoSurface = try photoReader?.getSurface() else {
                 throw ACameraError.sessionConfigurationFailed
             }
-            let outputs = JavaArrayList(environment: environment)
-            _ = outputs.add(streamSurface)
-            _ = outputs.add(photoSurface)
+            let outputs = try JavaArrayList(environment: environment)
+            _ = try outputs.add(streamSurface)
+            _ = try outputs.add(photoSurface)
             try device.createCaptureSession(outputs.as(List<Surface>.self), sessionCallback, handler)
         } catch {
             close(because: error)
@@ -173,7 +173,7 @@ final class CameraSession: @unchecked Sendable {
             guard let device, let request = try device.createCaptureRequest(CameraDevice.templatePreview) else {
                 throw ACameraError.sessionConfigurationFailed
             }
-            request.addTarget(streamSurface)
+            try request.addTarget(streamSurface)
             _ = try session.setRepeatingRequest(request.build(), nil, handler)
             isStreaming = true
             if isPreview {
@@ -188,7 +188,7 @@ final class CameraSession: @unchecked Sendable {
         do {
             if stream == Self.photoStream {
                 guard let image = try reader.acquireNextImage() else { return }
-                defer { image.close() }
+                defer { try? image.close() }
                 let photo = try photo(from: image, in: environment)
                 stillsInFlight = max(0, stillsInFlight - 1)
                 if !pendingPhotos.isEmpty {
@@ -243,7 +243,7 @@ final class CameraSession: @unchecked Sendable {
             guard let request = try device.createCaptureRequest(CameraDevice.templateStillCapture) else {
                 throw ACameraError.sessionConfigurationFailed
             }
-            request.addTarget(photoReader?.getSurface())
+            try request.addTarget(photoReader?.getSurface())
             _ = try session.capture(request.build(), nil, handler)
             stillsInFlight += 1
         }
@@ -264,19 +264,19 @@ final class CameraSession: @unchecked Sendable {
 
     /// A JPEG Image has one plane: the encoded file, in a direct ByteBuffer.
     private func photo(from image: Image, in environment: JNIEnvironment) throws -> APhoto {
-        guard let plane = image.getPlanes().first ?? nil,
-              let buffer = plane.getBuffer(),
+        guard let plane = try image.getPlanes().first ?? nil,
+              let buffer = try plane.getBuffer(),
               let base = environment.interface.GetDirectBufferAddress(environment, buffer.javaThis)
         else {
             throw ACameraError.sessionConfigurationFailed
         }
-        let start = Int(buffer.position())
-        let count = Int(buffer.remaining())
+        let start = Int(try buffer.position())
+        let count = Int(try buffer.remaining())
         let bytes = [UInt8](UnsafeRawBufferPointer(start: base.advanced(by: start), count: count))
         return APhoto(
             jpegData: bytes,
-            width: Int(image.getWidth()),
-            height: Int(image.getHeight()),
+            width: Int(try image.getWidth()),
+            height: Int(try image.getHeight()),
             rotation: camera.sensorOrientation
         )
     }
@@ -294,18 +294,18 @@ final class CameraSession: @unchecked Sendable {
         guard !isClosed else { return }
         isClosed = true
 
-        deviceCallback?.disarm()
-        sessionCallback?.disarm()
-        photoListener?.disarm()
-        warmupListener?.disarm()
+        try? deviceCallback?.disarm()
+        try? sessionCallback?.disarm()
+        try? photoListener?.disarm()
+        try? warmupListener?.disarm()
         if let session {
             try? session.stopRepeating()
-            session.close()
+            try? session.close()
         }
-        device?.close()
-        photoReader?.close()
-        warmupReader?.close()
-        previewSurface?.release()
+        try? device?.close()
+        try? photoReader?.close()
+        try? warmupReader?.close()
+        try? previewSurface?.release()
 
         session = nil
         device = nil
