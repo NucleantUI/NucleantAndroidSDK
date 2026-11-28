@@ -5,3 +5,9 @@ local.properties
 .idea/
 *.iml
 .kotlin/
+
+# The DeviceLab Swift package
+.build/
+.build-android/
+.swiftpm/
+Package.resolved

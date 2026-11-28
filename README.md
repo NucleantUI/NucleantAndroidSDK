@@ -25,6 +25,7 @@ and `ANativeWindow`), and the plain names stay free.
 | `AndroidSpeech` | `ATextToSpeech`: speak, stop, rate, pitch | `TextToSpeech` |
 | `AndroidBiometrics` | `ABiometrics`: availability, the biometric prompt | `BiometricManager`, `BiometricPrompt` |
 | `AndroidCore` | `AndroidContext` (the host's Activity, permissions, activity results, new intents), `AndroidMainThread`, `NativeHandle`, shared framework wrappers | |
+| `AndroidHardwareCamera2` | The camera2 wrappers the flashlight and the camera keep and hand out (`CameraCharacteristics`, `Size`, …) | `android.hardware.camera2` |
 
 Every capability type is an `@Observable final class` that keeps its
 swift-java objects (`CameraManager`, `CameraCharacteristics`, `Uri`, …) and
@@ -101,8 +102,9 @@ permissions it uses. The Device Lab manifest has the full list.
 
 ## Device Lab
 
-`Demo/` is a Kotlin app with one card per target. Its Swift is the
-`DeviceLabBridge` target, which jextract turns into Java
+`Demo/` is a Kotlin app with one card per target. Its Swift is a package of
+its own, `Demo/Package.swift`, which uses NucleantAndroidSDK through `..` as any
+app does. Its `DeviceLabBridge` library is what jextract turns into Java
 (`org.nucleantui.devicelab.bridge`). Each card follows its Swift model through
 `observe(Runnable)`, which tracks the model with `withObservationTracking` and
 runs the Runnable on the main thread after every change.

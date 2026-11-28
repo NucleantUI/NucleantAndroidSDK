@@ -7,19 +7,21 @@ plugins {
 
 // ── The Swift side ───────────────────────────────────────────────────────────
 //
-// The app's Swift is NucleantAndroidSDK itself (the package two levels up): its
-// DeviceLabBridge product, libDeviceLabBridge.so, cross-compiled here once per
-// ABI with the installed Swift Android SDK. Then:
+// The app's Swift is the DeviceLab package beside this Gradle build
+// (Demo/Package.swift): its DeviceLabBridge product, libDeviceLabBridge.so,
+// cross-compiled here once per ABI with the installed Swift Android SDK. It uses
+// NucleantAndroidSDK, one level up, as any app does. Then:
 //
 //   - the .so files it needs — itself, libSwiftJava.so, the Swift runtime
 //     libraries it links (Android has no system Swift), libc++_shared.so — are
 //     staged into build/generated/swiftJniLibs/<abi>/;
 //   - the Java jextract generated for DeviceLabBridge, swift-java's
 //     SwiftKitCore (which that Java calls into, and which is not published to
-//     any Maven repository), and the package's own Java helpers (Android/java)
-//     join the app's Java sources.
+//     any Maven repository), and NucleantAndroidSDK's Java helpers
+//     (Android/java) join the app's Java sources.
 
-val swiftPackageDir: File = rootDir.parentFile
+val swiftPackageDir: File = rootDir
+val sdkPackageDir: File = rootDir.parentFile
 // Its own scratch directory: the host build (.build) may come from another
 // compiler (Xcode's), and SwiftPM would reuse what that built for the host tools.
 val swiftBuildDir = File(swiftPackageDir, ".build-android")
@@ -185,7 +187,7 @@ android {
 
     sourceSets["main"].apply {
         java.srcDirs(
-            File(swiftPackageDir, "Android/java"),
+            File(sdkPackageDir, "Android/java"),
             File(swiftBuildDir, "plugins/outputs/$swiftPackageIdentity/$swiftProduct/destination/JExtractSwiftPlugin/src/generated/java"),
             swiftKitCoreDir.get().asFile,
         )

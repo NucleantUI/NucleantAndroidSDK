@@ -57,11 +57,8 @@ let package = Package(
     ],
     products: [
         .library(name: "AndroidCore", targets: ["AndroidCore"]),
-    ] + capabilities.map { .library(name: $0.name, targets: [$0.name]) } + [
-        // The Device Lab app's one Swift library (libDeviceLabBridge.so). Gradle
-        // builds it per ABI; see Demo/app/build.gradle.kts.
-        .library(name: "DeviceLabBridge", type: .dynamic, targets: ["DeviceLabBridge"]),
-    ],
+        .library(name: "AndroidHardwareCamera2", targets: ["AndroidHardwareCamera2"]),
+    ] + capabilities.map { .library(name: $0.name, targets: [$0.name]) },
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-java", exact: swiftJavaVersion),
     ],
@@ -71,26 +68,12 @@ let package = Package(
         // callback helpers in Android/java carry back into Swift.
         .target(name: "AndroidCore", dependencies: [swiftJava]),
         // swift-java wrappers for the android.hardware.camera2 classes both the
-        // flashlight and the camera drive. Not a product: building block only.
+        // flashlight and the camera drive. A product of its own, because the
+        // camera hands them out (ACamera.characteristics, .photoSizes).
         .target(name: "AndroidHardwareCamera2", dependencies: ["AndroidCore", swiftJava]),
     ] + capabilities.map {
         .target(name: $0.name, dependencies: ["AndroidCore", swiftJava] + $0.dependencies)
     } + [
-        // What the Kotlin app calls. jextract turns every `public` declaration
-        // here into Java (org.nucleantui.devicelab.bridge), so this target holds
-        // exactly the surface the app uses and forwards into the capability
-        // targets — those stay plain Swift, with nothing generated over them.
-        .target(
-            name: "DeviceLabBridge",
-            dependencies: ["AndroidCore", "AndroidHardwareCamera2", swiftJava] + capabilities.map { .byName(name: $0.name) },
-            exclude: ["swift-java.config"],
-            // jextract's generated async thunks do not pass Swift 6's sending
-            // checks; swift-java's own samples build them in Swift 5 mode too.
-            swiftSettings: [.swiftLanguageMode(.v5)],
-            plugins: [
-                .plugin(name: "JExtractSwiftPlugin", package: "swift-java"),
-            ]
-        ),
         .testTarget(
             name: "NucleantAndroidSDKTests",
             dependencies: ["AndroidCore"] + capabilities.map { .byName(name: $0.name) }
