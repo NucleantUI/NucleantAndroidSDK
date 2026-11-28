@@ -23,6 +23,9 @@ val swiftPackageDir: File = rootDir.parentFile
 // Its own scratch directory: the host build (.build) may come from another
 // compiler (Xcode's), and SwiftPM would reuse what that built for the host tools.
 val swiftBuildDir = File(swiftPackageDir, ".build-android")
+// SwiftPM names a root package after its directory, lowercased; plugin outputs
+// go under that name.
+val swiftPackageIdentity = swiftPackageDir.name.lowercase()
 val swiftProduct = "DeviceLabBridge"
 val swiftConfig = (findProperty("swift.config") as String?) ?: "debug"
 val buildSwift = (findProperty("swift.build") as String?)?.toBoolean() ?: true
@@ -183,7 +186,7 @@ android {
     sourceSets["main"].apply {
         java.srcDirs(
             File(swiftPackageDir, "Android/java"),
-            File(swiftBuildDir, "plugins/outputs/nucleantandroid/$swiftProduct/destination/JExtractSwiftPlugin/src/generated/java"),
+            File(swiftBuildDir, "plugins/outputs/$swiftPackageIdentity/$swiftProduct/destination/JExtractSwiftPlugin/src/generated/java"),
             swiftKitCoreDir.get().asFile,
         )
         jniLibs.srcDir(swiftJniLibsDir)
