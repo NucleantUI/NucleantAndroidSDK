@@ -11,36 +11,95 @@
 
 import AndroidBiometrics
 import AndroidCore
+import AndroidHaptics
+import AndroidNetwork
 import Foundation
 import SwiftJava
 import Testing
 
 @Suite(.serialized, .enabled(if: FakeAndroid.javac != nil, "needs a JDK: JAVA_HOME with bin/javac"))
 struct JavaExceptionTests {
-    /// What `BiometricManager.canAuthenticate` throws without `USE_BIOMETRIC`.
-    static let missingPermission = "java.lang.SecurityException: Must have USE_BIOMETRIC permission"
+    static let useBiometric = "android.permission.USE_BIOMETRIC"
+    static let vibrate = "android.permission.VIBRATE"
+    static let accessNetworkState = "android.permission.ACCESS_NETWORK_STATE"
+
+    // MARK: Biometrics
 
     @Test func biometricsInitThrowsTheSecurityException() throws {
         let android = try FakeAndroid.shared.get()
         try android.attachActivity()
-        try android.setBiometricPermission(false)
+        try android.declare(Self.useBiometric, false)
 
-        let error = #expect(throws: (any Error).self) { try ABiometrics() }
-        #expect(error.map { "\($0)" }?.hasPrefix(Self.missingPermission) == true)
+        expectSecurityException("Must have USE_BIOMETRIC permission", Self.useBiometric) { _ = try ABiometrics() }
     }
 
     @Test func biometricsRefreshThrowsOnceThePermissionIsGone() throws {
         let android = try FakeAndroid.shared.get()
         try android.attachActivity()
-        try android.setBiometricPermission(true)
+        try android.declare(Self.useBiometric, true)
         let biometrics = try ABiometrics()
         #expect(biometrics.availability == .noneEnrolled)
 
-        try android.setBiometricPermission(false)
-        let error = #expect(throws: (any Error).self) { try biometrics.refresh() }
-        #expect(error.map { "\($0)" }?.hasPrefix(Self.missingPermission) == true)
+        try android.declare(Self.useBiometric, false)
+        expectSecurityException("Must have USE_BIOMETRIC permission", Self.useBiometric) { try biometrics.refresh() }
         #expect(biometrics.availability == .noneEnrolled)
     }
+
+    // MARK: Haptics
+
+    @Test func hapticsThrowTheSecurityExceptionWithoutVibrate() throws {
+        let android = try FakeAndroid.shared.get()
+        try android.attachActivity()
+        try android.declare(Self.vibrate, false)
+        // Finding the vibrator needs no permission; using it does.
+        let vibrator = try AVibrator()
+        #expect(vibrator.hasVibrator)
+
+        expectSecurityException("vibrate", Self.vibrate) { try vibrator.vibrate(milliseconds: 40) }
+        expectSecurityException("vibrate", Self.vibrate) {
+            try vibrator.vibrate(pattern: [(milliseconds: 100, intensity: 1), (milliseconds: 50, intensity: 0)])
+        }
+        expectSecurityException("vibrate", Self.vibrate) { try vibrator.play(.click) }
+        expectSecurityException("cancelVibrate", Self.vibrate) { try vibrator.cancel() }
+    }
+
+    @Test func hapticsVibrateWithVibrateDeclared() throws {
+        let android = try FakeAndroid.shared.get()
+        try android.attachActivity()
+        try android.declare(Self.vibrate, true)
+        let vibrator = try AVibrator()
+
+        #expect(throws: Never.self) { try vibrator.vibrate(milliseconds: 40) }
+        #expect(throws: Never.self) { try vibrator.play(.click) }
+        #expect(throws: Never.self) { try vibrator.cancel() }
+    }
+
+    // MARK: Network
+
+    @Test func networkInitThrowsTheSecurityException() throws {
+        let android = try FakeAndroid.shared.get()
+        try android.attachActivity()
+        try android.declare(Self.accessNetworkState, false)
+
+        expectSecurityException("ConnectivityService", Self.accessNetworkState) { _ = try ANetwork() }
+    }
+}
+
+/// `body` throws the SecurityException Android's permission check throws when
+/// the manifest lacks `permission`, and its description is that exception:
+/// "java.lang.SecurityException: `message`: Neither user … nor current process
+/// has `permission`."
+private func expectSecurityException(
+    _ message: String,
+    _ permission: String,
+    sourceLocation: SourceLocation = #_sourceLocation,
+    _ body: () throws -> Void
+) {
+    let error = #expect(throws: (any Error).self, sourceLocation: sourceLocation) { try body() }
+    guard let error else { return }
+    let description = "\(error)"
+    #expect(description.hasPrefix("java.lang.SecurityException: \(message): Neither user"), sourceLocation: sourceLocation)
+    #expect(description.contains("has \(permission)."), sourceLocation: sourceLocation)
 }
 
 /// A JVM in the test process with stand-ins for the Android classes the
@@ -80,16 +139,39 @@ final class FakeAndroid: Sendable {
         AndroidContext.shared.attach(activity: try Activity.dynamicJavaNewObject(in: environment))
     }
 
-    /// Whether the manifest declares `USE_BIOMETRIC`, as far as the stand-in
-    /// BiometricManager is concerned.
-    func setBiometricPermission(_ declared: Bool) throws {
+    /// Whether the app's manifest declares `permission`, as far as the
+    /// stand-ins are concerned.
+    func declare(_ permission: String, _ declared: Bool) throws {
         let environment = try JavaVirtualMachine.shared().environment()
-        try JavaClass<BiometricManager>(environment: environment).declared = declared
+        try JavaClass<FakeManifest>(environment: environment).declare(permission, declared)
     }
 
     /// The stand-ins: just the members the Swift side calls, with the
     /// signatures Android's have.
     static let sources: [String: String] = [
+        "org/nucleantui/test/FakeManifest.java": """
+            package org.nucleantui.test;
+
+            import java.util.HashSet;
+            import java.util.Set;
+
+            /** Not Android: the permissions the stand-ins treat as declared. */
+            public final class FakeManifest {
+                private static final Set<String> declared = new HashSet<>();
+
+                public static synchronized void declare(String permission, boolean isDeclared) {
+                    if (isDeclared) declared.add(permission); else declared.remove(permission);
+                }
+
+                /** What Context.enforceCallingOrSelfPermission throws when the manifest lacks permission. */
+                public static synchronized void enforce(String permission, String message) {
+                    if (!declared.contains(permission)) {
+                        throw new SecurityException(message + ": Neither user 10140 nor current process has "
+                            + permission + ".");
+                    }
+                }
+            }
+            """,
         "android/content/Context.java": """
             package android.content;
 
@@ -97,7 +179,12 @@ final class FakeAndroid: Sendable {
                 public Context getApplicationContext() { return this; }
 
                 public Object getSystemService(String name) {
-                    return name.equals("biometric") ? new android.hardware.biometrics.BiometricManager() : null;
+                    switch (name) {
+                        case "biometric": return new android.hardware.biometrics.BiometricManager();
+                        case "vibrator": return new android.os.Vibrator();
+                        case "connectivity": return new android.net.ConnectivityManager();
+                        default: return null;
+                    }
                 }
             }
             """,
@@ -119,26 +206,78 @@ final class FakeAndroid: Sendable {
         "android/hardware/biometrics/BiometricManager.java": """
             package android.hardware.biometrics;
 
-            public class BiometricManager {
-                /** Whether the manifest declares USE_BIOMETRIC. */
-                public static boolean declared = false;
+            import org.nucleantui.test.FakeManifest;
 
+            public class BiometricManager {
                 public int canAuthenticate() { return canAuthenticate(0xFF); }
 
                 public int canAuthenticate(int authenticators) {
-                    if (!declared) {
-                        throw new SecurityException("Must have USE_BIOMETRIC permission: "
-                            + "Neither user 10140 nor current process has android.permission.USE_BIOMETRIC.");
-                    }
+                    FakeManifest.enforce("android.permission.USE_BIOMETRIC", "Must have USE_BIOMETRIC permission");
                     return 11; // BIOMETRIC_ERROR_NONE_ENROLLED
                 }
             }
             """,
+        "android/os/Vibrator.java": """
+            package android.os;
+
+            import org.nucleantui.test.FakeManifest;
+
+            public class Vibrator {
+                public boolean hasVibrator() { return true; }
+
+                public boolean hasAmplitudeControl() { return true; }
+
+                public void vibrate(VibrationEffect effect) {
+                    FakeManifest.enforce("android.permission.VIBRATE", "vibrate");
+                }
+
+                public void cancel() {
+                    FakeManifest.enforce("android.permission.VIBRATE", "cancelVibrate");
+                }
+            }
+            """,
+        "android/os/VibrationEffect.java": """
+            package android.os;
+
+            public class VibrationEffect {
+                public static VibrationEffect createOneShot(long milliseconds, int amplitude) {
+                    return new VibrationEffect();
+                }
+
+                public static VibrationEffect createWaveform(long[] timings, int[] amplitudes, int repeat) {
+                    return new VibrationEffect();
+                }
+
+                public static VibrationEffect createPredefined(int effectId) {
+                    return new VibrationEffect();
+                }
+            }
+            """,
+        "android/net/ConnectivityManager.java": """
+            package android.net;
+
+            import org.nucleantui.test.FakeManifest;
+
+            public class ConnectivityManager {
+                public Network getActiveNetwork() {
+                    FakeManifest.enforce("android.permission.ACCESS_NETWORK_STATE", "ConnectivityService");
+                    return null;
+                }
+            }
+            """,
+        "android/net/Network.java": """
+            package android.net;
+
+            public class Network {}
+            """,
     ]
 }
 
-extension JavaClass<BiometricManager> {
-    /// The stand-in's permission switch (FakeAndroid); not Android's.
-    @JavaStaticField
-    var declared: Bool
+/// The stand-ins' manifest (FakeAndroid); not Android's.
+@JavaClass("org.nucleantui.test.FakeManifest")
+open class FakeManifest: JavaObject {}
+
+extension JavaClass<FakeManifest> {
+    @JavaStaticMethod
+    func declare(_ permission: String, _ declared: Bool) throws
 }
